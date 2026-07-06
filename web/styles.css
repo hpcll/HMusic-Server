@@ -262,6 +262,26 @@ input:focus, select:focus {
 }
 .icon-btn:disabled { opacity: 0.5; }
 
+/* ===== 队列页 ===== */
+.queue-head { display: flex; align-items: center; justify-content: space-between; }
+.mode-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.mode-tab {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mode-tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+.queue-index {
+  width: 28px; flex-shrink: 0; text-align: center;
+  color: var(--muted); font-size: 13px;
+}
+.queue-current .track-title { color: var(--brand); }
+.queue-current .queue-index { color: var(--brand); }
+
 /* ===== Toast ===== */
 .toast {
   position: fixed;

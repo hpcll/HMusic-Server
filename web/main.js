@@ -3,6 +3,7 @@ import { api, getToken, setToken, clearToken } from "/app/api.js";
 import { LoginView } from "/app/views/login.js";
 import { PlayerView } from "/app/views/player.js";
 import { SearchView } from "/app/views/search.js";
+import { QueueView } from "/app/views/queue.js";
 import { SettingsView } from "/app/views/settings.js";
 
 // ===== 全局响应式状态 =====
@@ -48,6 +49,7 @@ export function logout() {
 const routes = {
   player: { component: PlayerView, requiresAuth: true, label: "正在播放", icon: "▶" },
   search: { component: SearchView, requiresAuth: true, label: "搜索", icon: "🔍" },
+  queue: { component: QueueView, requiresAuth: true, label: "队列", icon: "☰" },
   settings: { component: SettingsView, requiresAuth: true, label: "设置", icon: "⚙" },
   login: { component: LoginView, requiresAuth: false },
 };
@@ -76,7 +78,7 @@ function applyRoute() {
 window.addEventListener("hashchange", applyRoute);
 
 // ===== 根组件 =====
-const NAV_ITEMS = ["player", "search", "settings"];
+const NAV_ITEMS = ["player", "search", "queue", "settings"];
 
 const App = {
   setup() {
