@@ -1,0 +1,45 @@
+{
+  "name": "hmusic-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HMusic Server - self-hosted backend for HMusic.",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src test",
+    "format": "prettier --write src test"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@fastify/jwt": "^9.0.1",
+    "@fastify/static": "^8.3.0",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.4",
+    "fastify": "^5.2.1",
+    "nanoid": "^5.0.9",
+    "pino": "^9.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.5",
+    "drizzle-kit": "^0.30.1",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^2.1.8",
+    "vue": "^3.5.39"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

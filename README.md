@@ -1,0 +1,108 @@
+# HMusic Server
+
+HMusic App 的自建后端，负责服务端登录、运行配置、小米账号设备、音源插件、搜索解析和小爱音箱播放控制。
+
+## Development
+
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8090/api/v1/system/info
+```
+
+Web 管理页：
+
+```text
+http://127.0.0.1:8090/admin
+```
+
+现代前端（推荐给日常使用，含登录、正在播放、搜索、设置，移动端友好）：
+
+```text
+http://127.0.0.1:8090/app/
+```
+
+`/app/` 是一个基于 Vue 3 的单页应用（免构建，运行时已随仓库 vendored 到
+`web/vendor/`，局域网离线可用）。首次访问会引导创建管理员账号，之后可搜歌、
+控制小爱音箱播放、切换设备、调音量、让音箱语音播报，并在「设置」里管理小米账号
+状态、默认音质与自定义直连播放型号。功能更全的服务端配置（小米短信/网页登录、
+LX 插件、手工曲目、链路诊断）仍在 `/admin`。
+
+首次使用可以在管理页创建管理员账号、登录小米账号、刷新小米设备并选择默认播放设备。管理页还支持运行配置、手工曲目、LX 插件管理、链路诊断、搜索和播放测试。
+
+局域网播放时，`HMUSIC_PUBLIC_BASE_URL` 必须填手机和小爱音箱都能访问的地址，例如：
+
+```env
+HMUSIC_PUBLIC_BASE_URL=http://192.168.31.247:8090
+```
+
+服务端会把解析出的音乐地址转换成带签名的 `/api/v1/proxy/audio/...` 代理地址再下发给小爱音箱，避免部分音乐 CDN 被音箱直连时拦截。
+
+推荐的本地验证顺序：
+
+1. 打开 `/admin` 创建管理员账号。
+2. 在“小米账号”区域登录并完成短信验证。服务端会在验证通过后自动跟随重定向换取登录凭据（优先用 passToken，不再依赖手工粘贴 STS 地址）；若仍失败，可用“网页登录验证”或在“导入已有小米会话”里导入 STS URL / `serviceToken + userId`。
+3. 刷新设备并选择默认播放设备。
+4. 在“链路诊断”区域播放内置测试音频，先确认服务端到小爱音箱的链路能出声。
+5. 在“LX 插件”区域上传音源插件，或在“手工曲目”区域添加一个可访问的音频 URL。
+6. 在“搜索与播放测试”区域搜索并播放，确认真实歌曲能出声。
+
+如果小米短信验证被限频，管理页的小米账号区域可以通过“网页登录验证”导入验证完成地址，也可以在“导入已有小米会话”里导入 STS URL 或 `serviceToken + userId` 会话。
+
+现有 Flutter App 仍有部分 本地音乐服务 风格调用。服务端提供过渡兼容入口，包括 `/getversion`、`/getsetting`、`/api/js-plugins`、`/api/device/pushList`、`/getplayerstatus` 等；App 发来的客户端搜索结果会被转换成 HMusic 队列并复用服务端播放链路。
+
+新接口推荐直接提交客户端搜索结果：
+
+```json
+{
+  "clientTrack": {
+    "id": "0039MnYb0qxYhV",
+    "source": "qq",
+    "title": "Song Title",
+    "artist": "Artist",
+    "album": "Album",
+    "duration": 180,
+    "pic": "https://example.com/cover.jpg"
+  }
+}
+```
+
+`POST /api/v1/tracks/resolve`、`POST /api/v1/playback/play`、`POST /api/v1/playlists/:id/tracks` 都支持这种输入。服务端会把 `qq/kuwo/netease` 等来源规范化成 `tx/kw/wy`，并清理客户端临时 `url/playUrl`，最终用 `source + id` 交给 LX 插件解析。
+
+可用 `POST /api/v1/playback/test-tone` 播放内置 3 秒测试音频。它不依赖 LX 插件，适合先排查小米登录、默认设备、`HMUSIC_PUBLIC_BASE_URL` 和音频代理链路。
+
+### 小爱音箱型号适配
+
+服务端内置了需要走 `player_play_music` 接口的小爱型号白名单（`X08*`、`LX0*`、`L05B/L05C`、`L06A`、`L15A/L16A/L17A`、`OH2/OH2P` 等）。如果某个型号直连播放“能连上但没声音”，通常是它需要 `player_play_music` 却没在内置表里——在管理页“运行配置 → 自定义直连播放型号”里填入型号代码（逗号分隔）即可补充，无需改代码。
+
+`POST /api/v1/playback/speak`（body: `{ "text": "...", "deviceId": "..." }`）可让小爱音箱语音播报一段文字，内部优先走 `mibrain/text_to_speech`，失败回退 `player_play_tts`。
+
+## Documentation
+
+- [后端实现文档](docs/backend-implementation.md)
+
+## Production
+
+```bash
+npm ci
+cp .env.example .env
+npm run build
+npm start
+```
+
+部署时必须修改 `.env` 里的 `HMUSIC_JWT_SECRET`，并把 `HMUSIC_DATA_DIR` 指向持久化目录。App 访问地址和 `HMUSIC_PUBLIC_BASE_URL` 都需要填写 `http://<server-ip>:8090` 或反向代理后的 HTTPS 地址。
+
+## Verification
+
+```bash
+npm run typecheck
+npm test
+npm run lint
+npm run build
+```
