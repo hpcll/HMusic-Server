@@ -98,6 +98,21 @@ npm start
 
 部署时必须修改 `.env` 里的 `HMUSIC_JWT_SECRET`，并把 `HMUSIC_DATA_DIR` 指向持久化目录。App 访问地址和 `HMUSIC_PUBLIC_BASE_URL` 都需要填写 `http://<server-ip>:8090` 或反向代理后的 HTTPS 地址。
 
+### 一键部署到另一台服务器
+
+如果开发机和运行服务器是两台机器，用打包脚本把产物送过去，无需在服务器上装开发工具链：
+
+```bash
+# 开发机：编译 + 打包，产出 hmusic-deploy.tar.gz
+bash scripts/pack.sh
+
+# 拷到服务器（scp/rsync/共享盘任选），解压后：
+tar -xzf hmusic-deploy.tar.gz
+bash scripts/deploy-run.sh   # 首次会生成 .env 并提示改 JWT_SECRET 与 PUBLIC_BASE_URL，改完重跑
+```
+
+启动后访问 `http://<server-ip>:8090/app/`（新前端）或 `/admin`（完整配置页）。
+
 ## Verification
 
 ```bash
