@@ -52,3 +52,34 @@ export async function verifyLogin(
 
   return { id: user.id, username: user.username };
 }
+
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ id: string; username: string }> {
+  const rows = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const user = rows[0];
+  if (!user) {
+    throw new AppError("USER_NOT_FOUND", "用户不存在", 404);
+  }
+
+  const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!ok) {
+    throw new AppError("INVALID_CREDENTIALS", "当前密码错误", 401);
+  }
+
+  await db
+    .update(users)
+    .set({
+      passwordHash: await bcrypt.hash(newPassword, 12),
+      updatedAt: Date.now(),
+    })
+    .where(eq(users.id, userId));
+
+  return { id: user.id, username: user.username };
+}

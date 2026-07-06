@@ -282,6 +282,25 @@ input:focus, select:focus {
 .queue-current .track-title { color: var(--brand); }
 .queue-current .queue-index { color: var(--brand); }
 
+/* ===== 歌单页 ===== */
+.playlist-grid { display: grid; gap: 10px; }
+.playlist-card {
+  grid-template-columns: 46px 1fr auto;
+  align-items: center;
+  cursor: pointer;
+  padding: 12px 14px;
+}
+.pl-icon {
+  width: 46px; height: 46px; border-radius: 10px;
+  background: color-mix(in srgb, var(--brand) 14%, var(--bg));
+  color: var(--brand);
+  display: grid; place-items: center; font-size: 22px;
+}
+.pl-meta { min-width: 0; }
+.pl-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-actions { display: flex; gap: 6px; }
+.detail-head { display: flex; align-items: center; justify-content: space-between; }
+
 /* ===== Toast ===== */
 .toast {
   position: fixed;

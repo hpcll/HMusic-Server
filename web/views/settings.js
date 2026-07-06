@@ -1,5 +1,5 @@
 import { ref, onMounted, h } from "vue";
-import { api } from "/app/api.js";
+import { api, setToken } from "/app/api.js";
 import { toast } from "/app/main.js";
 
 // 设置页（管理员）：小米账号状态、运行配置、自定义型号、设备刷新。
@@ -11,6 +11,9 @@ export const SettingsView = {
     const extraModels = ref("");
     const saving = ref(false);
     const refreshing = ref(false);
+    const currentPassword = ref("");
+    const newPassword = ref("");
+    const changingPw = ref(false);
 
     async function load() {
       try {
@@ -66,6 +69,32 @@ export const SettingsView = {
         toast("已退出小米账号", "success");
       } catch (error) {
         toast(error.message, "error");
+      }
+    }
+
+    async function doChangePassword() {
+      if (newPassword.value.length < 8) {
+        toast("新密码至少 8 个字符", "error");
+        return;
+      }
+      changingPw.value = true;
+      try {
+        const result = await api("/auth/password", {
+          method: "POST",
+          body: {
+            currentPassword: currentPassword.value,
+            newPassword: newPassword.value,
+          },
+        });
+        // 后端签发了新 token，续上会话免重登。
+        setToken(result.accessToken);
+        currentPassword.value = "";
+        newPassword.value = "";
+        toast("密码已修改", "success");
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        changingPw.value = false;
       }
     }
 
@@ -126,6 +155,34 @@ export const SettingsView = {
             refreshing.value ? "刷新中…" : "刷新设备列表"),
           h("p", { class: "hint" }, "更完整的设备管理、LX 插件、手工曲目请到 ",
             h("a", { href: "/admin", target: "_blank" }, "/admin"), " 页面。"),
+        ]),
+
+        h("section", { class: "card" }, [
+          h("div", { class: "card-title" }, "修改密码"),
+          h("label", { class: "field" }, [
+            "当前密码",
+            h("input", {
+              type: "password",
+              autocomplete: "current-password",
+              value: currentPassword.value,
+              onInput: (e) => (currentPassword.value = e.target.value),
+            }),
+          ]),
+          h("label", { class: "field" }, [
+            "新密码（至少 8 位）",
+            h("input", {
+              type: "password",
+              autocomplete: "new-password",
+              value: newPassword.value,
+              onInput: (e) => (newPassword.value = e.target.value),
+              onKeyup: (e) => e.key === "Enter" && doChangePassword(),
+            }),
+          ]),
+          h("button", {
+            class: "primary-btn",
+            disabled: changingPw.value || !currentPassword.value || !newPassword.value,
+            onClick: doChangePassword,
+          }, changingPw.value ? "修改中…" : "修改密码"),
         ]),
       ]);
   },
