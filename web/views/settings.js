@@ -1,35 +1,221 @@
-import { ref, onMounted, h } from "vue";
+import { ref, onMounted, onUnmounted, h } from "vue";
 import { api, setToken } from "/app/api.js";
 import { toast } from "/app/main.js";
+import { MiAccountSection } from "/app/views/settings-mi.js";
+import { SourcesSection, TracksSection } from "/app/views/settings-sources.js";
 
-// 设置页（管理员）：小米账号状态、运行配置、自定义型号、设备刷新。
-// 复杂的小米短信/网页验证仍走老的 /admin 页面，这里给出入口链接。
+// 设置中心：分组菜单 → 子页（移动端设置 App 范式）。
+// 菜单行右侧显示实时摘要（登录态/设备/插件数），一眼看清系统状态。
 export const SettingsView = {
   setup() {
-    const mi = ref(null);
-    const config = ref(null);
-    const extraModels = ref("");
-    const saving = ref(false);
+    const section = ref(null); // null=菜单页
+    const summary = ref({});
+
+    async function loadSummary() {
+      const [mi, devices, plugins, config] = await Promise.all([
+        api("/mi/status").catch(() => null),
+        api("/devices").catch(() => null),
+        api("/sources/lx-plugins").catch(() => null),
+        api("/config").catch(() => null),
+      ]);
+      const defaultDevice = (devices?.devices || []).find((d) => d.isDefault);
+      summary.value = {
+        mi: mi?.loggedIn ? `已登录 ${mi.accountMasked || ""}` : "未登录",
+        devices: defaultDevice ? defaultDevice.name : `${devices?.devices?.length ?? 0} 台`,
+        sources: `${plugins?.plugins?.length ?? 0} 个`,
+        tracks: `${config?.manualTracks?.length ?? 0} 首`,
+        config: config ? `${config.defaultQuality} · ${STRATEGY_LABELS[config.searchStrategy] || ""}` : "",
+        diag: "",
+        security: "",
+      };
+    }
+
+    function open(key) {
+      section.value = key;
+    }
+
+    function back() {
+      section.value = null;
+      loadSummary();
+    }
+
+    onMounted(loadSummary);
+
+    return () => {
+      if (section.value) {
+        const def = ALL_ITEMS.find((item) => item.key === section.value);
+        return h("main", { class: "view settings-view" }, [
+          h("div", { class: "section-head" }, [
+            h("button", { class: "ghost-btn", onClick: back }, "‹ 设置"),
+            h("span", { class: "section-title" }, def?.label || ""),
+            h("span", { class: "section-head-pad" }),
+          ]),
+          h(SECTION_COMPONENTS[section.value]),
+        ]);
+      }
+
+      return h("main", { class: "view settings-view" }, [
+        h("h2", { class: "view-title" }, "设置"),
+        ...GROUPS.map((group) =>
+          h("div", { class: "menu-group" }, [
+            h("div", { class: "menu-group-title" }, group.title),
+            h("div", { class: "card menu-card" },
+              group.items.map((item) =>
+                h("button", {
+                  key: item.key,
+                  class: "menu-row",
+                  onClick: () => open(item.key),
+                }, [
+                  h("span", { class: "menu-icon" }, item.icon),
+                  h("span", { class: "menu-label" }, item.label),
+                  h("span", { class: "menu-summary" }, summary.value[item.key] || ""),
+                  h("span", { class: "menu-chevron" }, "›"),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      ]);
+    };
+  },
+};
+
+const STRATEGY_LABELS = {
+  qqFirst: "QQ 优先",
+  kuwoFirst: "酷我优先",
+  neteaseFirst: "网易云优先",
+};
+
+const GROUPS = [
+  {
+    title: "账号与设备",
+    items: [
+      { key: "mi", icon: "📱", label: "小米账号" },
+      { key: "devices", icon: "🔊", label: "播放设备" },
+    ],
+  },
+  {
+    title: "音源与内容",
+    items: [
+      { key: "sources", icon: "🧩", label: "LX 音源插件" },
+      { key: "tracks", icon: "🎼", label: "手工曲目" },
+    ],
+  },
+  {
+    title: "播放与诊断",
+    items: [
+      { key: "config", icon: "⚙️", label: "运行配置" },
+      { key: "diag", icon: "🩺", label: "链路诊断" },
+    ],
+  },
+  {
+    title: "安全",
+    items: [{ key: "security", icon: "🔐", label: "修改密码" }],
+  },
+];
+
+const ALL_ITEMS = GROUPS.flatMap((g) => g.items);
+
+// ===== 播放设备子页 =====
+const DevicesSection = {
+  setup() {
+    const devices = ref([]);
     const refreshing = ref(false);
-    const currentPassword = ref("");
-    const newPassword = ref("");
-    const changingPw = ref(false);
 
     async function load() {
       try {
-        const [miStatus, cfg] = await Promise.all([
-          api("/mi/status"),
-          api("/config"),
-        ]);
-        mi.value = miStatus;
-        config.value = cfg;
-        extraModels.value = (cfg.extraPlayMusicModels || []).join(", ");
+        const result = await api("/devices");
+        devices.value = result.devices || [];
       } catch (error) {
         toast(error.message, "error");
       }
     }
 
-    async function saveConfig() {
+    async function refresh() {
+      refreshing.value = true;
+      try {
+        const result = await api("/devices/refresh", { method: "POST" });
+        await load();
+        toast(`已刷新，共 ${result.deviceCount} 台设备`, "success");
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        refreshing.value = false;
+      }
+    }
+
+    async function select(device) {
+      try {
+        await api(`/devices/${device.id}/select`, { method: "POST" });
+        await load();
+        toast(`默认设备已切换为 ${device.name}`, "success");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    async function probe(device, event) {
+      event.stopPropagation();
+      try {
+        await api(`/devices/${device.id}/probe`, { method: "POST" });
+        await load();
+        toast(`${device.name} 探测完成`, "success");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    onMounted(load);
+
+    return () =>
+      h("div", { class: "section-body" }, [
+        h("button", {
+          class: "secondary-btn",
+          disabled: refreshing.value,
+          onClick: refresh,
+        }, refreshing.value ? "刷新中…" : "🔄 从小米账号刷新设备"),
+        devices.value.length === 0
+          ? h("div", { class: "muted center" }, "暂无设备，请先登录小米账号后刷新")
+          : h("div", { class: "device-list" },
+              devices.value.map((d) =>
+                h("button", {
+                  key: d.id,
+                  class: ["device-item", { active: d.isDefault }],
+                  onClick: () => select(d),
+                }, [
+                  h("span", { class: `dot ${d.isOnline ? "dot-playing" : "dot-idle"}` }),
+                  h("span", null, [
+                    h("div", null, d.name),
+                    h("div", { class: "muted" }, d.type || ""),
+                  ]),
+                  h("span", { class: "device-side" }, [
+                    d.isDefault ? h("span", { class: "badge" }, "默认") : null,
+                    h("button", { class: "ghost-btn", onClick: (e) => probe(d, e) }, "探测"),
+                  ]),
+                ]),
+              ),
+            ),
+      ]);
+  },
+};
+
+// ===== 运行配置子页 =====
+const ConfigSection = {
+  setup() {
+    const config = ref(null);
+    const extraModels = ref("");
+    const saving = ref(false);
+
+    async function load() {
+      try {
+        config.value = await api("/config");
+        extraModels.value = (config.value.extraPlayMusicModels || []).join(", ");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    async function save() {
       saving.value = true;
       try {
         const next = await api("/config", {
@@ -37,6 +223,8 @@ export const SettingsView = {
           body: {
             serverName: config.value.serverName,
             defaultQuality: config.value.defaultQuality,
+            searchStrategy: config.value.searchStrategy,
+            resolveStrategy: config.value.resolveStrategy,
             extraPlayMusicModels: parseModels(extraModels.value),
           },
         });
@@ -50,34 +238,180 @@ export const SettingsView = {
       }
     }
 
-    async function refreshDevices() {
-      refreshing.value = true;
+    onMounted(load);
+
+    return () =>
+      config.value
+        ? h("section", { class: "card" }, [
+            h("label", { class: "field" }, [
+              "服务端名称",
+              h("input", {
+                value: config.value.serverName,
+                onInput: (e) => (config.value.serverName = e.target.value),
+              }),
+            ]),
+            h("label", { class: "field" }, [
+              "默认音质",
+              selectEl(config.value, "defaultQuality", [
+                ["128k", "128k"], ["320k", "320k"], ["flac", "FLAC"], ["hires", "Hi-Res"],
+              ]),
+            ]),
+            h("label", { class: "field" }, [
+              "搜索策略",
+              selectEl(config.value, "searchStrategy", [
+                ["qqFirst", "QQ 优先"], ["kuwoFirst", "酷我优先"], ["neteaseFirst", "网易云优先"],
+              ]),
+            ]),
+            h("label", { class: "field" }, [
+              "解析策略",
+              selectEl(config.value, "resolveStrategy", [
+                ["originalFirst", "原始结果优先"], ["qqFirst", "QQ 优先"],
+                ["kuwoFirst", "酷我优先"], ["neteaseFirst", "网易云优先"],
+              ]),
+            ]),
+            h("label", { class: "field" }, [
+              "自定义直连播放型号",
+              h("input", {
+                placeholder: "型号逗号分隔，如 L20A, X20C",
+                value: extraModels.value,
+                onInput: (e) => (extraModels.value = e.target.value),
+              }),
+              h("small", { class: "hint" }, "某型号小爱直连播放没声音时才填，内置常见型号已适配。"),
+            ]),
+            h("button", {
+              class: "primary-btn",
+              disabled: saving.value,
+              onClick: save,
+            }, saving.value ? "保存中…" : "保存配置"),
+          ])
+        : h("div", { class: "muted center" }, "加载中…");
+  },
+};
+
+function selectEl(target, key, options) {
+  return h("select", {
+    value: target[key],
+    onChange: (e) => (target[key] = e.target.value),
+  }, options.map(([value, label]) =>
+    h("option", { value, selected: target[key] === value }, label)));
+}
+
+function parseModels(value) {
+  const seen = new Set();
+  return (value || "")
+    .split(/[\s,，、]+/)
+    .map((item) => item.trim().toUpperCase())
+    .filter((item) => {
+      if (!item || !/^[A-Z0-9]+$/.test(item) || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+// ===== 链路诊断子页 =====
+const DiagSection = {
+  setup() {
+    const playback = ref(null);
+    const ttsText = ref("你好，我是 HMusic");
+    const busy = ref("");
+    let timer = 0;
+
+    async function refresh() {
       try {
-        const result = await api("/devices/refresh", { method: "POST" });
-        toast(`已刷新，共 ${result.deviceCount} 个设备`, "success");
+        playback.value = await api("/playback/state");
+      } catch {
+        // 尽力而为
+      }
+    }
+
+    async function playTestTone() {
+      busy.value = "tone";
+      try {
+        await api("/playback/test-tone", { method: "POST" });
+        await refresh();
+        toast("测试音频已下发，注意听音箱", "success");
       } catch (error) {
         toast(error.message, "error");
       } finally {
-        refreshing.value = false;
+        busy.value = "";
       }
     }
 
-    async function logoutMi() {
+    async function speak() {
+      if (!ttsText.value.trim()) return;
+      busy.value = "tts";
       try {
-        await api("/mi/logout", { method: "POST" });
-        await load();
-        toast("已退出小米账号", "success");
+        await api("/playback/speak", {
+          method: "POST",
+          body: { text: ttsText.value.trim() },
+        });
+        toast("播报已下发，注意听音箱", "success");
       } catch (error) {
         toast(error.message, "error");
+      } finally {
+        busy.value = "";
       }
     }
 
-    async function doChangePassword() {
+    onMounted(() => {
+      refresh();
+      timer = setInterval(refresh, 3000);
+    });
+    onUnmounted(() => clearInterval(timer));
+
+    return () => {
+      const pb = playback.value || {};
+      return h("div", { class: "section-body" }, [
+        h("section", { class: "card" }, [
+          h("div", { class: "card-title" }, "① 播放链路"),
+          h("p", { class: "hint" }, "向默认音箱播放 3 秒内置测试音，不依赖任何音源插件。"),
+          h("button", {
+            class: "primary-btn",
+            disabled: busy.value === "tone",
+            onClick: playTestTone,
+          }, "▶ 播放测试音频"),
+          h("div", { class: "muted" }, [
+            h("span", { class: `dot dot-${pb.state || "idle"}` }),
+            `${pb.state || "idle"}${pb.deviceName ? " · " + pb.deviceName : ""}`,
+            pb.durationMs
+              ? ` · ${Math.round((pb.positionMs || 0) / 1000)}s / ${Math.round(pb.durationMs / 1000)}s`
+              : "",
+          ]),
+        ]),
+        h("section", { class: "card" }, [
+          h("div", { class: "card-title" }, "② 语音播报（TTS）"),
+          h("div", { class: "inline-form" }, [
+            h("input", {
+              value: ttsText.value,
+              onInput: (e) => (ttsText.value = e.target.value),
+              onKeyup: (e) => e.key === "Enter" && speak(),
+            }),
+            h("button", {
+              class: "secondary-btn",
+              disabled: busy.value === "tts",
+              onClick: speak,
+            }, "📢 播报"),
+          ]),
+        ]),
+        h("p", { class: "hint" }, "💡 两步都能出声，说明服务端 → 小爱音箱链路完全正常。"),
+      ]);
+    };
+  },
+};
+
+// ===== 修改密码子页 =====
+const SecuritySection = {
+  setup() {
+    const currentPassword = ref("");
+    const newPassword = ref("");
+    const changing = ref(false);
+
+    async function change() {
       if (newPassword.value.length < 8) {
         toast("新密码至少 8 个字符", "error");
         return;
       }
-      changingPw.value = true;
+      changing.value = true;
       try {
         const result = await api("/auth/password", {
           method: "POST",
@@ -86,7 +420,6 @@ export const SettingsView = {
             newPassword: newPassword.value,
           },
         });
-        // 后端签发了新 token，续上会话免重登。
         setToken(result.accessToken);
         currentPassword.value = "";
         newPassword.value = "";
@@ -94,108 +427,46 @@ export const SettingsView = {
       } catch (error) {
         toast(error.message, "error");
       } finally {
-        changingPw.value = false;
+        changing.value = false;
       }
     }
 
-    onMounted(load);
-
     return () =>
-      h("main", { class: "view settings-view" }, [
-        h("h2", { class: "view-title" }, "设置"),
-
-        h("section", { class: "card" }, [
-          h("div", { class: "card-title" }, "小米账号"),
-          mi.value?.loggedIn
-            ? h("div", { class: "kv" }, [
-                h("div", null, [h("span", { class: "muted" }, "账号 "), mi.value.accountMasked || "已登录"]),
-                h("button", { class: "danger-btn", onClick: logoutMi }, "退出登录"),
-              ])
-            : h("div", { class: "kv" }, [
-                h("span", { class: "muted" }, "未登录小米账号"),
-                h("a", { class: "secondary-btn", href: "/admin", target: "_blank" }, "去 /admin 登录"),
-              ]),
+      h("section", { class: "card" }, [
+        h("label", { class: "field" }, [
+          "当前密码",
+          h("input", {
+            type: "password",
+            autocomplete: "current-password",
+            value: currentPassword.value,
+            onInput: (e) => (currentPassword.value = e.target.value),
+          }),
         ]),
-
-        config.value
-          ? h("section", { class: "card" }, [
-              h("div", { class: "card-title" }, "运行配置"),
-              h("label", { class: "field" }, [
-                "服务端名称",
-                h("input", {
-                  value: config.value.serverName,
-                  onInput: (e) => (config.value.serverName = e.target.value),
-                }),
-              ]),
-              h("label", { class: "field" }, [
-                "默认音质",
-                h("select", {
-                  value: config.value.defaultQuality,
-                  onChange: (e) => (config.value.defaultQuality = e.target.value),
-                }, ["128k", "320k", "flac", "hires"].map((q) =>
-                  h("option", { value: q, selected: config.value.defaultQuality === q }, q))),
-              ]),
-              h("label", { class: "field" }, [
-                "自定义直连播放型号",
-                h("input", {
-                  placeholder: "型号逗号分隔，如 L20A, X20C",
-                  value: extraModels.value,
-                  onInput: (e) => (extraModels.value = e.target.value),
-                }),
-                h("small", { class: "hint" }, "某型号小爱直连播放没声音时才填，内置常见型号已适配。"),
-              ]),
-              h("button", { class: "primary-btn", disabled: saving.value, onClick: saveConfig },
-                saving.value ? "保存中…" : "保存配置"),
-            ])
-          : null,
-
-        h("section", { class: "card" }, [
-          h("div", { class: "card-title" }, "播放设备"),
-          h("button", { class: "secondary-btn", disabled: refreshing.value, onClick: refreshDevices },
-            refreshing.value ? "刷新中…" : "刷新设备列表"),
-          h("p", { class: "hint" }, "更完整的设备管理、LX 插件、手工曲目请到 ",
-            h("a", { href: "/admin", target: "_blank" }, "/admin"), " 页面。"),
+        h("label", { class: "field" }, [
+          "新密码（至少 8 位）",
+          h("input", {
+            type: "password",
+            autocomplete: "new-password",
+            value: newPassword.value,
+            onInput: (e) => (newPassword.value = e.target.value),
+            onKeyup: (e) => e.key === "Enter" && change(),
+          }),
         ]),
-
-        h("section", { class: "card" }, [
-          h("div", { class: "card-title" }, "修改密码"),
-          h("label", { class: "field" }, [
-            "当前密码",
-            h("input", {
-              type: "password",
-              autocomplete: "current-password",
-              value: currentPassword.value,
-              onInput: (e) => (currentPassword.value = e.target.value),
-            }),
-          ]),
-          h("label", { class: "field" }, [
-            "新密码（至少 8 位）",
-            h("input", {
-              type: "password",
-              autocomplete: "new-password",
-              value: newPassword.value,
-              onInput: (e) => (newPassword.value = e.target.value),
-              onKeyup: (e) => e.key === "Enter" && doChangePassword(),
-            }),
-          ]),
-          h("button", {
-            class: "primary-btn",
-            disabled: changingPw.value || !currentPassword.value || !newPassword.value,
-            onClick: doChangePassword,
-          }, changingPw.value ? "修改中…" : "修改密码"),
-        ]),
+        h("button", {
+          class: "primary-btn",
+          disabled: changing.value || !currentPassword.value || !newPassword.value,
+          onClick: change,
+        }, changing.value ? "修改中…" : "修改密码"),
       ]);
   },
 };
 
-function parseModels(value) {
-  const seen = new Set();
-  return (value || "")
-    .split(/[\s,，、]+/)
-    .map((s) => s.trim().toUpperCase())
-    .filter((s) => {
-      if (!s || !/^[A-Z0-9]+$/.test(s) || seen.has(s)) return false;
-      seen.add(s);
-      return true;
-    });
-}
+const SECTION_COMPONENTS = {
+  mi: MiAccountSection,
+  devices: DevicesSection,
+  sources: SourcesSection,
+  tracks: TracksSection,
+  config: ConfigSection,
+  diag: DiagSection,
+  security: SecuritySection,
+};

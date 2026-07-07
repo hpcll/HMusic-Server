@@ -301,6 +301,84 @@ input:focus, select:focus {
 .pl-actions { display: flex; gap: 6px; }
 .detail-head { display: flex; align-items: center; justify-content: space-between; }
 
+/* ===== 设置中心 ===== */
+.menu-group { display: grid; gap: 6px; }
+.menu-group-title { font-size: 12px; color: var(--muted); padding: 0 4px; }
+.menu-card { padding: 4px; gap: 0; }
+.menu-row {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  border: none; background: transparent; color: var(--text);
+  padding: 13px 12px; font-size: 15px; cursor: pointer;
+  border-radius: 12px; text-align: left;
+}
+.menu-row:hover { background: var(--bg); }
+.menu-row + .menu-row { border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; }
+.menu-icon { width: 24px; text-align: center; }
+.menu-label { flex-shrink: 0; }
+.menu-summary {
+  margin-left: auto; color: var(--muted); font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 45%;
+}
+.menu-chevron { color: var(--muted); }
+
+.section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 2px;
+}
+.section-title { font-weight: 700; font-size: 16px; }
+.section-head-pad { width: 52px; }
+.section-body { display: grid; gap: 14px; }
+
+/* Tabs（登录三通道） */
+.tabs {
+  display: flex; gap: 4px;
+  background: var(--line);
+  border-radius: 12px; padding: 4px;
+}
+.tab {
+  flex: 1; border: none; border-radius: 9px;
+  padding: 9px 4px; font-size: 14px; cursor: pointer;
+  background: transparent; color: var(--muted);
+}
+.tab.active { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+
+/* 扫码登录 */
+.qr-card { justify-items: center; text-align: center; }
+.qr-idle, .qr-live, .qr-done { display: grid; gap: 10px; justify-items: center; }
+.qr-box {
+  width: 220px; height: 220px;
+  background: #fff; border-radius: 14px; padding: 12px;
+  box-shadow: var(--shadow);
+}
+.qr-box svg { width: 100%; height: 100%; display: block; }
+.qr-tip { font-size: 14px; }
+.qr-ok { font-size: 17px; font-weight: 700; }
+.sms-card { border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent); }
+.sms-actions { display: flex; gap: 10px; justify-content: center; }
+
+/* LX 插件 */
+.plugin-actions { display: flex; gap: 8px; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; margin: 0; }
+.toggle input { width: auto; }
+.file-pick {
+  display: grid; place-items: center;
+  border: 1.5px dashed var(--line); border-radius: 12px;
+  padding: 18px; cursor: pointer; color: var(--brand);
+  font-size: 14px; font-weight: 600; margin: 0;
+}
+.file-pick:hover { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 5%, transparent); }
+.code-area {
+  width: 100%; border: 1px solid var(--line); border-radius: 12px;
+  padding: 11px 13px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg); color: var(--text); resize: vertical;
+}
+.code-area:focus { outline: none; border-color: var(--brand); }
+.checkbox-field { display: flex; align-items: center; gap: 8px; }
+.checkbox-field input { width: auto; }
+.device-side { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+
 /* ===== Toast ===== */
 .toast {
   position: fixed;
