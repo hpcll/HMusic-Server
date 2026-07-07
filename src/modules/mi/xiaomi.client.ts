@@ -292,6 +292,153 @@ export async function createXiaomiSessionFromWebCredentials(input: {
   );
 }
 
+export type XiaomiQrLoginStart = {
+  loginUrl: string;
+  lpUrl: string;
+  deviceId: string;
+};
+
+// 扫码登录第一步（对齐 本地音乐服务 的 longPolling/loginUrl 流程）：
+// 无凭据请求 serviceLogin 拿登录页参数，再换取二维码内容与长轮询地址。
+export async function startXiaomiQrLogin(input: {
+  deviceId?: string;
+}): Promise<XiaomiQrLoginStart> {
+  const deviceId = input.deviceId || createXiaomiDeviceId();
+  const passO = randomBytes(8).toString("hex");
+  const response = await fetch(
+    "https://account.xiaomi.com/pass/serviceLogin?_json=true&sid=micoapi&_locale=zh_CN",
+    {
+      headers: {
+        "User-Agent": accountUserAgent,
+        Cookie: `deviceId=${deviceId}; pass_o=${passO}; sdkVersion=3.4.1; uLocale=zh_CN`,
+      },
+    },
+  );
+  const data = parseXiaomiJson<XiaomiLoginResponse>(await response.text());
+  const location = asString(data.location);
+  const locationUrl = location ? safeParseUrl(location) : undefined;
+  if (!locationUrl) {
+    throw new AppError("MI_QR_INIT_FAILED", "小米扫码登录初始化失败", 502, {
+      code: data.code,
+    });
+  }
+
+  // 登录页 location 的 query（qs/sid/callback/_sign/serviceParam…）就是二维码接口的参数。
+  const params = locationUrl.searchParams;
+  params.set("theme", "");
+  params.set("bizDeviceType", "");
+  params.set("_hasLogo", "false");
+  params.set("_qrsize", "240");
+  params.set("_dc", String(Date.now()));
+
+  const qrResponse = await fetch(
+    `https://account.xiaomi.com/longPolling/loginUrl?${params.toString()}`,
+    {
+      headers: {
+        "User-Agent": accountUserAgent,
+        Cookie: `deviceId=${deviceId}; pass_o=${passO}`,
+      },
+    },
+  );
+  const qrRaw = await qrResponse.text();
+  const qrData = parseXiaomiJson<{
+    code?: number;
+    desc?: string;
+    loginUrl?: string;
+    lp?: string;
+  }>(qrRaw);
+  const loginUrl = asString(qrData.loginUrl);
+  const lpUrl = asString(qrData.lp);
+  if (qrData.code !== 0 || !loginUrl || !lpUrl) {
+    throw new AppError(
+      "MI_QR_INIT_FAILED",
+      qrData.desc || "小米扫码登录初始化失败",
+      502,
+      { code: qrData.code },
+    );
+  }
+
+  log.info({ step: "qr.start", deviceId }, "小米扫码登录二维码已生成");
+  return { loginUrl, lpUrl, deviceId };
+}
+
+// 扫码登录第二步：长轮询 lp 地址等待手机确认。单次最多等 90 秒，
+// 超时抛 MI_QR_POLL_TIMEOUT（调用方可用同一 lp 地址继续等）。
+export async function waitXiaomiQrLogin(input: {
+  lpUrl: string;
+  deviceId: string;
+}): Promise<XiaomiSession> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  let raw: string;
+  try {
+    const response = await fetch(input.lpUrl, {
+      headers: { "User-Agent": accountUserAgent },
+      signal: controller.signal,
+    });
+    raw = await response.text();
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new AppError("MI_QR_POLL_TIMEOUT", "等待扫码超时", 408);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const data = parseXiaomiJson<XiaomiLoginResponse>(raw);
+  if (data.code !== 0) {
+    throw new AppError(
+      "MI_QR_FAILED",
+      data.desc || data.description || "扫码登录未完成",
+      502,
+      { code: data.code },
+    );
+  }
+
+  const nonce = extractBigIntField(raw, "nonce") ?? data.nonce;
+  const userId = asString(data.userId);
+  const location = data.location;
+  if (!location || !userId) {
+    throw new AppError("MI_QR_TOKEN_DATA_MISSING", "扫码结果缺少登录字段", 502);
+  }
+
+  log.info({ step: "qr.confirmed", userId }, "扫码已确认，开始换取 serviceToken");
+
+  // 首选带 clientSign 的标准 STS 交换；失败回退 passToken 通道。
+  if (data.ssecurity && nonce) {
+    try {
+      const serviceToken = await exchangeServiceToken(
+        location,
+        nonce,
+        data.ssecurity,
+      );
+      return {
+        serviceToken,
+        userId,
+        ssecurity: data.ssecurity,
+        deviceId: input.deviceId,
+      };
+    } catch (error) {
+      log.warn(
+        { step: "qr.exchange.failed", code: error instanceof AppError ? error.code : undefined },
+        "扫码 STS 交换失败，尝试 passToken 回退",
+      );
+    }
+  }
+
+  const passToken = asString(data.passToken);
+  if (passToken) {
+    return loginXiaomiAccountWithPassToken({
+      passToken,
+      userId,
+      deviceId: input.deviceId,
+    });
+  }
+
+  throw new AppError("MI_QR_TOKEN_DATA_MISSING", "扫码结果缺少登录凭据", 502);
+}
+
 export async function startXiaomiIdentityChallenge(input: {
   verificationUrl: string;
   deviceId: string;

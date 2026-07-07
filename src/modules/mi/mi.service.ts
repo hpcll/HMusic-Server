@@ -17,6 +17,8 @@ import {
   loginXiaomiAccount,
   sendXiaomiIdentitySms,
   startXiaomiIdentityChallenge,
+  startXiaomiQrLogin,
+  waitXiaomiQrLogin,
   type XiaomiIdentityChallengeState,
   type XiaomiDevice,
   type XiaomiSession,
@@ -321,6 +323,125 @@ export async function completeMiWebVerification(
       accountMasked: pending.accountMasked,
       expiresAt: Date.now() + webVerificationTtlMs,
     };
+  }
+}
+
+// ===== 扫码登录（米家 APP 扫码，无短信/验证码/新页面）=====
+
+type MiQrSession = {
+  id: string;
+  deviceId: string;
+  loginUrl: string;
+  status: "pending" | "success" | "failed" | "expired";
+  message?: string;
+  expiresAt: number;
+  createdAt: number;
+};
+
+// 扫码会话是分钟级的临时状态，放内存即可（服务重启后重新生成二维码）。
+const qrSessions = new Map<string, MiQrSession>();
+const qrSessionTtlMs = 5 * 60 * 1000;
+
+export type MiQrLoginChallenge = {
+  qrId: string;
+  loginUrl: string;
+  expiresAt: number;
+};
+
+export type MiQrLoginStatus = {
+  status: MiQrSession["status"];
+  message?: string;
+  mi?: MiStatus;
+};
+
+export async function startMiQrLogin(): Promise<MiQrLoginChallenge> {
+  cleanupQrSessions();
+  const existing = (
+    await db
+      .select()
+      .from(miAccounts)
+      .where(eq(miAccounts.id, accountId))
+      .limit(1)
+  )[0];
+  const deviceId = existing?.deviceId || createXiaomiDeviceId();
+  const start = await startXiaomiQrLogin({ deviceId });
+
+  const session: MiQrSession = {
+    id: createVerificationId(),
+    deviceId: start.deviceId,
+    loginUrl: start.loginUrl,
+    status: "pending",
+    expiresAt: Date.now() + qrSessionTtlMs,
+    createdAt: Date.now(),
+  };
+  qrSessions.set(session.id, session);
+  void runQrLoginLoop(session, start.lpUrl);
+
+  return {
+    qrId: session.id,
+    loginUrl: session.loginUrl,
+    expiresAt: session.expiresAt,
+  };
+}
+
+export async function getMiQrLoginStatus(qrId: string): Promise<MiQrLoginStatus> {
+  const session = qrSessions.get(qrId);
+  if (!session) {
+    throw new AppError(
+      "MI_QR_SESSION_NOT_FOUND",
+      "扫码会话不存在或已清理，请重新生成二维码",
+      404,
+      { qrId },
+    );
+  }
+  if (session.status === "pending" && Date.now() >= session.expiresAt) {
+    session.status = "expired";
+    session.message = "二维码已过期，请重新生成";
+  }
+  if (session.status === "success") {
+    return { status: "success", mi: await getMiStatus() };
+  }
+  return { status: session.status, message: session.message };
+}
+
+async function runQrLoginLoop(
+  session: MiQrSession,
+  lpUrl: string,
+): Promise<void> {
+  while (session.status === "pending" && Date.now() < session.expiresAt) {
+    try {
+      const miSession = await waitXiaomiQrLogin({
+        lpUrl,
+        deviceId: session.deviceId,
+      });
+      const devices = await fetchXiaomiDevices(miSession);
+      await saveMiSession(miSession.userId, miSession);
+      await saveDevices(devices);
+      session.status = "success";
+      return;
+    } catch (error) {
+      if (error instanceof AppError && error.code === "MI_QR_POLL_TIMEOUT") {
+        continue; // 长轮询单次超时，二维码未过期就继续等
+      }
+      session.status = "failed";
+      session.message =
+        error instanceof Error ? error.message : "扫码登录失败";
+      return;
+    }
+  }
+  if (session.status === "pending") {
+    session.status = "expired";
+    session.message = "二维码已过期，请重新生成";
+  }
+}
+
+function cleanupQrSessions(): void {
+  const now = Date.now();
+  for (const [id, session] of qrSessions) {
+    // 过期后再保留一段时间供前端读到 expired 状态，之后清理。
+    if (now - session.createdAt > qrSessionTtlMs * 3) {
+      qrSessions.delete(id);
+    }
   }
 }
 

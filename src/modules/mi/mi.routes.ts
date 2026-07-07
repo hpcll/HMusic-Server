@@ -4,12 +4,14 @@ import { requireAuth } from "../../shared/auth.js";
 import {
   completeMiWebVerification,
   confirmMiVerificationCode,
+  getMiQrLoginStatus,
   getMiStatus,
   importMiWebSession,
   loginMiAccount,
   logoutMiAccount,
   resendMiVerificationCode,
   startMiLoginVerification,
+  startMiQrLogin,
   startMiWebVerification,
 } from "./mi.service.js";
 
@@ -83,6 +85,13 @@ export async function miRoutes(app: FastifyInstance): Promise<void> {
       body.captchaCode,
       body.webCredentials,
     );
+  });
+
+  app.post("/qr/start", async () => startMiQrLogin());
+
+  app.get("/qr/:id/status", async (request) => {
+    const params = verificationParamsSchema.parse(request.params);
+    return getMiQrLoginStatus(params.id);
   });
 
   app.post("/verification/start", async (request) => {
