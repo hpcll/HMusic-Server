@@ -205,22 +205,63 @@ input:focus, select:focus {
 .np-artist { color: var(--muted); font-size: 14px; margin-top: 2px; }
 .np-state { color: var(--muted); font-size: 12px; margin-top: 8px; }
 
-.controls { grid-auto-flow: column; justify-content: center; gap: 14px; }
+.player-card { gap: 16px; }
+
+/* 进度条 */
+.progress-row { display: flex; align-items: center; gap: 10px; }
+.progress-time {
+  font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px; text-align: center;
+}
+.progress-bar {
+  flex: 1; padding: 0; height: 5px;
+  accent-color: var(--brand); cursor: pointer;
+}
+.progress-bar:disabled { opacity: 0.4; cursor: default; }
+
+/* 主控三键：垂直居中，主键放大带光晕 */
+.controls {
+  display: flex; align-items: center; justify-content: center;
+  gap: 28px; padding: 2px 0;
+}
 .ctrl-btn {
-  width: 52px; height: 52px; border-radius: 50%;
+  width: 48px; height: 48px; border-radius: 50%;
   border: 1px solid var(--line);
   background: var(--panel);
-  font-size: 20px; cursor: pointer; color: var(--text);
+  font-size: 18px; cursor: pointer; color: var(--text);
+  display: grid; place-items: center; line-height: 1; padding: 0;
 }
+.ctrl-btn:hover { border-color: var(--brand); }
 .ctrl-btn.primary {
-  width: 64px; height: 64px;
+  width: 68px; height: 68px;
   background: var(--brand); color: #fff; border: none;
   font-size: 26px;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--brand) 45%, transparent);
 }
+.ctrl-btn.primary:hover { background: var(--brand-dark); }
 .ctrl-btn:disabled { opacity: 0.5; }
 .ctrl-btn.busy { opacity: 0.6; }
 
-.slider { padding: 0; height: 6px; accent-color: var(--brand); }
+/* 次行：停止（左弱化）+ 音量（右，图标点击/悬停展开滑块） */
+.sub-controls {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.volume-wrap { display: flex; align-items: center; gap: 8px; }
+.volume-slider {
+  width: 0; opacity: 0; padding: 0; height: 5px;
+  accent-color: var(--brand);
+  transition: width 0.25s ease, opacity 0.2s ease;
+  pointer-events: none;
+}
+.volume-wrap.open .volume-slider {
+  width: 130px; opacity: 1; pointer-events: auto;
+}
+.volume-pct {
+  font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 22px; text-align: right;
+}
 
 .device-list { display: grid; gap: 8px; }
 .device-item {

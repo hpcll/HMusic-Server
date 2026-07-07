@@ -2,14 +2,20 @@ import { ref, computed, onMounted, onUnmounted, h } from "vue";
 import { api } from "/app/api.js";
 import { store, refreshPlayback, toast } from "/app/main.js";
 
-// 正在播放 + 设备控制页。家人朋友进来最先看到这个。
+// 正在播放：封面卡 + 播放器卡（进度条 / 主控三键 / 停止+音量图标）+ 设备 + TTS。
+// 进度条 1s 本地插值推进，5s 与服务端校准一次。
 export const PlayerView = {
   setup() {
     const devices = ref([]);
     const volume = ref(0);
+    const volumeOpen = ref(false);
+    const volDragging = ref(false);
     const speakText = ref("");
     const busy = ref("");
-    let timer = 0;
+    const displayPos = ref(0); // 本地插值的播放进度 ms
+    const dragging = ref(false); // 用户拖进度条时暂停同步
+    let syncTimer = 0;
+    let localTimer = 0;
 
     const pb = computed(() => store.playback || {});
     const track = computed(() => pb.value.track);
@@ -24,22 +30,43 @@ export const PlayerView = {
       }
     }
 
-    async function tick() {
+    async function sync() {
       await refreshPlayback();
-      if (typeof store.playback?.volume === "number") {
+      if (!dragging.value) {
+        displayPos.value = store.playback?.positionMs ?? 0;
+      }
+      if (typeof store.playback?.volume === "number" && !volDragging.value) {
         volume.value = store.playback.volume;
       }
     }
 
-    async function control(action, label) {
+    function localTick() {
+      const state = store.playback;
+      if (!state || state.state !== "playing" || dragging.value) return;
+      const max = state.durationMs || 0;
+      const next = displayPos.value + 1000;
+      displayPos.value = max > 0 ? Math.min(next, max) : next;
+    }
+
+    async function control(action) {
       busy.value = action;
       try {
         await api(`/playback/${action}`, { method: "POST" });
-        await tick();
+        await sync();
       } catch (error) {
         toast(error.message, "error");
       } finally {
         busy.value = "";
+      }
+    }
+
+    async function seekTo(positionMs) {
+      try {
+        await api("/playback/seek", { method: "POST", body: { positionMs } });
+        await sync();
+      } catch (error) {
+        toast(error.message, "error");
+        await sync();
       }
     }
 
@@ -54,6 +81,7 @@ export const PlayerView = {
     }
 
     async function commitVolume() {
+      volDragging.value = false;
       try {
         await api("/playback/volume", { method: "POST", body: { volume: volume.value } });
       } catch (error) {
@@ -75,10 +103,14 @@ export const PlayerView = {
 
     onMounted(() => {
       loadDevices();
-      tick();
-      timer = setInterval(tick, 5000); // 轮询播放状态
+      sync();
+      syncTimer = setInterval(sync, 5000);
+      localTimer = setInterval(localTick, 1000);
     });
-    onUnmounted(() => clearInterval(timer));
+    onUnmounted(() => {
+      clearInterval(syncTimer);
+      clearInterval(localTimer);
+    });
 
     return () =>
       h("main", { class: "view player-view" }, [
@@ -96,29 +128,82 @@ export const PlayerView = {
           ]),
         ]),
 
-        h("section", { class: "controls card" }, [
-          ctrlBtn("previous", "⏮", busy.value, () => control("previous")),
-          pb.value.state === "playing"
-            ? ctrlBtn("pause", "⏸", busy.value, () => control("pause"), true)
-            : ctrlBtn("resume", "▶", busy.value, () => control("resume"), true),
-          ctrlBtn("stop", "⏹", busy.value, () => control("stop")),
-          ctrlBtn("next", "⏭", busy.value, () => control("next")),
-        ]),
+        h("section", { class: "card player-card" }, [
+          // 进度条
+          h("div", { class: "progress-row" }, [
+            h("span", { class: "progress-time" }, formatTime(displayPos.value)),
+            h("input", {
+              type: "range",
+              class: "progress-bar",
+              min: 0,
+              max: pb.value.durationMs || 0,
+              value: Math.min(displayPos.value, pb.value.durationMs || 0),
+              disabled: !pb.value.durationMs || !pb.value.seekEnabled,
+              title: pb.value.seekEnabled ? "" : "当前设备不支持进度跳转",
+              onInput: (e) => {
+                dragging.value = true;
+                displayPos.value = Number(e.target.value);
+              },
+              onChange: (e) => {
+                dragging.value = false;
+                seekTo(Number(e.target.value));
+              },
+            }),
+            h("span", { class: "progress-time" }, formatTime(pb.value.durationMs)),
+          ]),
 
-        h("section", { class: "card" }, [
-          h("div", { class: "row-label" }, `音量 ${volume.value}`),
-          h("input", {
-            type: "range", min: 0, max: 100, value: volume.value,
-            class: "slider",
-            onInput: (e) => (volume.value = Number(e.target.value)),
-            onChange: commitVolume,
-          }),
+          // 主控三键（垂直居中对齐）
+          h("div", { class: "controls" }, [
+            ctrlBtn("previous", "⏮", busy.value, () => control("previous")),
+            pb.value.state === "playing"
+              ? ctrlBtn("pause", "⏸", busy.value, () => control("pause"), true)
+              : ctrlBtn("resume", "▶", busy.value, () => control("resume"), true),
+            ctrlBtn("next", "⏭", busy.value, () => control("next")),
+          ]),
+
+          // 次行：停止（弱化） + 音量（图标，点击/悬停展开滑块）
+          h("div", { class: "sub-controls" }, [
+            h("button", {
+              class: "icon-btn",
+              title: "停止播放",
+              disabled: !!busy.value,
+              onClick: () => control("stop"),
+            }, "⏹"),
+            h("div", {
+              class: ["volume-wrap", { open: volumeOpen.value }],
+              onMouseenter: () => (volumeOpen.value = true),
+              onMouseleave: () => {
+                if (!volDragging.value) volumeOpen.value = false;
+              },
+            }, [
+              h("input", {
+                type: "range",
+                class: "volume-slider",
+                min: 0,
+                max: 100,
+                value: volume.value,
+                "aria-label": "音量",
+                onInput: (e) => {
+                  volDragging.value = true;
+                  volume.value = Number(e.target.value);
+                },
+                onChange: commitVolume,
+              }),
+              h("span", { class: "volume-pct" },
+                volumeOpen.value ? String(volume.value) : ""),
+              h("button", {
+                class: "icon-btn",
+                title: "音量",
+                onClick: () => (volumeOpen.value = !volumeOpen.value),
+              }, volumeIcon(volume.value)),
+            ]),
+          ]),
         ]),
 
         h("section", { class: "card" }, [
           h("div", { class: "row-label" }, "播放设备"),
           devices.value.length === 0
-            ? h("div", { class: "muted" }, "未发现设备，请先在设置里登录小米账号并刷新设备")
+            ? h("div", { class: "muted" }, "未发现设备，请到 设置 → 小米账号 登录后刷新")
             : h("div", { class: "device-list" },
                 devices.value.map((d) =>
                   h("button", {
@@ -160,6 +245,20 @@ function coverStyle(track) {
     return { backgroundImage: `url(${track.coverUrl})` };
   }
   return {};
+}
+
+function formatTime(ms) {
+  const total = Math.max(0, Math.floor((ms || 0) / 1000));
+  const m = Math.floor(total / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function volumeIcon(volume) {
+  if (volume <= 0) return "🔇";
+  if (volume < 34) return "🔈";
+  if (volume < 67) return "🔉";
+  return "🔊";
 }
 
 function ctrlBtn(key, icon, busy, onClick, primary = false) {
