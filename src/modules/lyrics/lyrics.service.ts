@@ -2,6 +2,7 @@ import type { HMusicLyric, HMusicTrack } from "../../shared/contracts.js";
 import { getPlaybackState } from "../playback/playback.service.js";
 import { getQueue } from "../queue/queue.service.js";
 import { getSourceTrackLyric } from "../sources/sources.service.js";
+import { fetchFallbackLyric } from "./lyric-providers.js";
 
 export async function getEmptyLyric(trackId: string): Promise<HMusicLyric> {
   return {
@@ -17,12 +18,21 @@ export async function getEmptyLyric(trackId: string): Promise<HMusicLyric> {
 export async function getLyricByTrack(
   track: HMusicTrack,
 ): Promise<HMusicLyric> {
-  const result = await getSourceTrackLyric(track);
-  if (!result) return getEmptyLyric(track.id);
+  // 先问音源插件；多数插件只声明 musicUrl，取不到词时走 QQ 兜底源。
+  let result = await getSourceTrackLyric(track);
+  let source = track.source;
+  if (!result || !result.lrc.trim()) {
+    const fallback = await fetchFallbackLyric(track);
+    if (fallback) {
+      result = fallback;
+      source = "qq-fallback";
+    }
+  }
+  if (!result || !result.lrc.trim()) return getEmptyLyric(track.id);
 
   return {
     trackId: track.id,
-    source: track.source,
+    source,
     lrc: result.lrc,
     lines: parseLrc(result.lrc),
     translatedLines: parseLrc(result.translatedLrc || ""),

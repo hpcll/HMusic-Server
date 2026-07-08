@@ -117,6 +117,23 @@ export function ensureSchema(): void {
       ON playlist_tracks(playlist_id, position);
     CREATE INDEX IF NOT EXISTS playlist_tracks_playlist_track_idx
       ON playlist_tracks(playlist_id, track_id);
+
+    CREATE TABLE IF NOT EXISTS play_history (
+      id TEXT PRIMARY KEY,
+      track_key TEXT NOT NULL,
+      source TEXT NOT NULL,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      album TEXT,
+      cover_url TEXT,
+      track_json TEXT NOT NULL,
+      played_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS play_history_played_at_idx
+      ON play_history(played_at);
+    CREATE INDEX IF NOT EXISTS play_history_track_key_idx
+      ON play_history(track_key);
 	  `);
 
   try {

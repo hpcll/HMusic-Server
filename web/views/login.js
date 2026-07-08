@@ -42,7 +42,9 @@ export const LoginView = {
     return () =>
       h("div", { class: "login-page" }, [
         h("div", { class: "login-card" }, [
-          h("div", { class: "login-brand" }, "🎵 HMusic"),
+          h("div", { class: "login-brand" }, [
+            h("img", { class: "login-logo", src: "/app/assets/logo-wordmark.png", alt: "HMusic" }),
+          ]),
           h(
             "p",
             { class: "login-sub" },

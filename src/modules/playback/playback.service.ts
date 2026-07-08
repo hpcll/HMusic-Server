@@ -4,7 +4,8 @@ import type {
   HMusicTrack,
 } from "../../shared/contracts.js";
 import { AppError } from "../../shared/errors.js";
-import { listDevices } from "../devices/devices.service.js";
+import { recordPlay } from "../charts/charts.service.js";
+import { LOCAL_DEVICE_ID, listDevices } from "../devices/devices.service.js";
 import { getRuntimeConfig } from "../config/config.service.js";
 import {
   createMiAudioId,
@@ -113,16 +114,20 @@ export async function playUrl(
 ): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(input.deviceId);
   const playbackUrl = createAudioProxyUrl(input.url);
-  await sendPlayerOperation(target.id, "pause");
-  await sendPlayerOperation(target.id, "stop");
-  await delay(500);
-  await sendDevicePlayUrl({
-    deviceId: target.id,
-    hardware: target.type,
-    url: playbackUrl,
-    title: input.track?.title,
-    durationMs: input.durationMs,
-  });
+  const isLocal = target.id === LOCAL_DEVICE_ID;
+  // 本机播放：不发小米指令，服务端只记账，音频由浏览器 <audio> 拉 streamUrl。
+  if (!isLocal) {
+    await sendPlayerOperation(target.id, "pause");
+    await sendPlayerOperation(target.id, "stop");
+    await delay(500);
+    await sendDevicePlayUrl({
+      deviceId: target.id,
+      hardware: target.type,
+      url: playbackUrl,
+      title: input.track?.title,
+      durationMs: input.durationMs,
+    });
+  }
 
   playbackState = {
     ...playbackState,
@@ -134,6 +139,7 @@ export async function playUrl(
     durationMs: input.durationMs ?? input.track?.durationMs ?? 0,
     volume: playbackState.volume,
     seekEnabled: target.capabilities.supportsSeek,
+    streamUrl: isLocal ? playbackUrl : undefined,
     updatedAt: Date.now(),
   };
   if (input.track) {
@@ -143,13 +149,21 @@ export async function playUrl(
       queueIndex: queue.currentIndex,
       queueLength: queue.items.length,
     };
+    // 播放历史（家庭热播榜数据源）尽力而为，绝不阻断播放。
+    try {
+      recordPlay(input.track);
+    } catch {
+      // 历史写入失败可忽略
+    }
   }
   return playbackState;
 }
 
 export async function pausePlayback(): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(playbackState.deviceId);
-  await sendPlayerOperation(target.id, "pause");
+  if (target.id !== LOCAL_DEVICE_ID) {
+    await sendPlayerOperation(target.id, "pause");
+  }
   playbackState = {
     ...playbackState,
     deviceId: target.id,
@@ -162,7 +176,9 @@ export async function pausePlayback(): Promise<HMusicPlaybackState> {
 
 export async function resumePlayback(): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(playbackState.deviceId);
-  await sendPlayerOperation(target.id, "play");
+  if (target.id !== LOCAL_DEVICE_ID) {
+    await sendPlayerOperation(target.id, "play");
+  }
   playbackState = {
     ...playbackState,
     deviceId: target.id,
@@ -175,9 +191,11 @@ export async function resumePlayback(): Promise<HMusicPlaybackState> {
 
 export async function stopPlayback(): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(playbackState.deviceId);
-  // 部分小爱型号单独调用 stop 不会真正停止，先 pause 再 stop（对齐 参考实现）。
-  await sendPlayerOperation(target.id, "pause");
-  await sendPlayerOperation(target.id, "stop");
+  if (target.id !== LOCAL_DEVICE_ID) {
+    // 部分小爱型号单独调用 stop 不会真正停止，先 pause 再 stop（对齐 参考实现）。
+    await sendPlayerOperation(target.id, "pause");
+    await sendPlayerOperation(target.id, "stop");
+  }
   playbackState = {
     ...playbackState,
     deviceId: target.id,
@@ -201,6 +219,9 @@ export async function nextPlayback(): Promise<HMusicPlaybackState> {
   }
 
   const target = await resolveTargetDevice(playbackState.deviceId);
+  if (target.id === LOCAL_DEVICE_ID) {
+    throw new AppError("QUEUE_END", "队列是空的，没有下一首", 409);
+  }
   await sendPlayerOperation(target.id, "next");
   return markLoading(target.id, target.name);
 }
@@ -217,6 +238,9 @@ export async function previousPlayback(): Promise<HMusicPlaybackState> {
   }
 
   const target = await resolveTargetDevice(playbackState.deviceId);
+  if (target.id === LOCAL_DEVICE_ID) {
+    throw new AppError("QUEUE_START", "队列是空的，没有上一首", 409);
+  }
   await sendPlayerOperation(target.id, "prev");
   return markLoading(target.id, target.name);
 }
@@ -314,10 +338,12 @@ export async function seekPlayback(
     );
   }
 
-  await sendPlaybackUbus(target.id, "player_set_positon", {
-    position: positionMs,
-    media: "app_ios",
-  });
+  if (target.id !== LOCAL_DEVICE_ID) {
+    await sendPlaybackUbus(target.id, "player_set_positon", {
+      position: positionMs,
+      media: "app_ios",
+    });
+  }
   playbackState = {
     ...playbackState,
     deviceId: target.id,
@@ -333,10 +359,12 @@ export async function setPlaybackVolume(
 ): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(playbackState.deviceId);
   const normalizedVolume = Math.max(0, Math.min(100, Math.round(volume)));
-  await sendPlaybackUbus(target.id, "player_set_volume", {
-    volume: normalizedVolume,
-    media: "app_ios",
-  });
+  if (target.id !== LOCAL_DEVICE_ID) {
+    await sendPlaybackUbus(target.id, "player_set_volume", {
+      volume: normalizedVolume,
+      media: "app_ios",
+    });
+  }
   playbackState = {
     ...playbackState,
     deviceId: target.id,
@@ -347,11 +375,65 @@ export async function setPlaybackVolume(
   return playbackState;
 }
 
+// 本机播放专用：浏览器 <audio> 是播放真相源，定期把实际进度/状态回写服务端，
+// 其它端（手机上打开的页面）看到的状态才是真的。播完一首由前端上报 ended，
+// 服务端推进队列并返回下一首（含新的 streamUrl）。
+export async function reportLocalPlayback(input: {
+  state?: "playing" | "paused" | "stopped";
+  positionMs?: number;
+  durationMs?: number;
+  ended?: boolean;
+}): Promise<HMusicPlaybackState> {
+  if (playbackState.deviceId !== LOCAL_DEVICE_ID) {
+    // 设备已切走，忽略迟到的上报。
+    return playbackState;
+  }
+
+  if (input.ended) {
+    try {
+      return await nextPlayback();
+    } catch (error) {
+      // 队列尽头（sequence/single_once）：正常收尾。
+      if (error instanceof AppError && error.code === "QUEUE_END") {
+        playbackState = {
+          ...playbackState,
+          state: "stopped",
+          positionMs: 0,
+          streamUrl: undefined,
+          updatedAt: Date.now(),
+        };
+        return playbackState;
+      }
+      throw error;
+    }
+  }
+
+  playbackState = {
+    ...playbackState,
+    ...(input.state ? { state: input.state } : {}),
+    ...(typeof input.positionMs === "number"
+      ? { positionMs: Math.max(0, Math.round(input.positionMs)) }
+      : {}),
+    ...(typeof input.durationMs === "number" && input.durationMs > 0
+      ? { durationMs: Math.round(input.durationMs) }
+      : {}),
+    updatedAt: Date.now(),
+  };
+  return playbackState;
+}
+
 export async function speakOnDevice(
   text: string,
   deviceId?: string,
 ): Promise<{ deviceId: string; deviceName: string }> {
   const target = await resolveTargetDevice(deviceId);
+  if (target.id === LOCAL_DEVICE_ID) {
+    throw new AppError(
+      "DEVICE_TTS_UNSUPPORTED",
+      "本机播放不支持语音播报，请选择小爱音箱",
+      409,
+    );
+  }
   const session = await getStoredMiSession();
   await sendXiaomiTts({ session, deviceId: target.id, text });
   return { deviceId: target.id, deviceName: target.name };
@@ -489,6 +571,8 @@ function delay(ms: number): Promise<void> {
 async function refreshPlaybackStateFromDevice(): Promise<void> {
   try {
     const target = await resolveTargetDevice(playbackState.deviceId);
+    // 本机播放的真相源是浏览器（通过 reportLocalPlayback 回写），不查小米。
+    if (target.id === LOCAL_DEVICE_ID) return;
     const response = await sendPlaybackUbus(
       target.id,
       "player_get_play_status",

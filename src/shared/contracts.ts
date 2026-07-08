@@ -76,6 +76,8 @@ export type HMusicPlaybackState = {
   queueIndex: number;
   queueLength: number;
   seekEnabled: boolean;
+  // 仅「本机播放」虚拟设备：浏览器 <audio> 直连的音频代理地址。
+  streamUrl?: string;
   updatedAt: number;
 };
 

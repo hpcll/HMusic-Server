@@ -1,14 +1,22 @@
 import { ref, onMounted, onUnmounted, h } from "vue";
 import { api, setToken } from "/app/api.js";
 import { toast } from "/app/main.js";
+import { Icons } from "/app/icons.js";
 import { MiAccountSection } from "/app/views/settings-mi.js";
 import { SourcesSection, TracksSection } from "/app/views/settings-sources.js";
 
-// 设置中心：分组菜单 → 子页（移动端设置 App 范式）。
+// 设置中心。桌面（≥860px）：左菜单常驻 + 右内容区双栏，无需来回跳转；
+// 窄屏：保持「分组菜单 → 子页」两级（移动端设置 App 范式）。
+// 两种布局由同一份状态驱动：桌面下 section 恒有值，窄屏下 null 表示菜单页。
 // 菜单行右侧显示实时摘要（登录态/设备/插件数），一眼看清系统状态。
+const DESKTOP_QUERY = "(min-width: 860px)";
+
 export const SettingsView = {
   setup() {
-    const section = ref(null); // null=菜单页
+    const mq = window.matchMedia(DESKTOP_QUERY);
+    const isDesktop = ref(mq.matches);
+    // 桌面默认选中第一项；窄屏默认停留在菜单页。
+    const section = ref(mq.matches ? "mi" : null);
     const summary = ref({});
 
     async function loadSummary() {
@@ -39,9 +47,58 @@ export const SettingsView = {
       loadSummary();
     }
 
-    onMounted(loadSummary);
+    function onMqChange(e) {
+      isDesktop.value = e.matches;
+      if (e.matches && !section.value) section.value = "mi";
+    }
+
+    onMounted(() => {
+      loadSummary();
+      mq.addEventListener("change", onMqChange);
+    });
+    onUnmounted(() => mq.removeEventListener("change", onMqChange));
+
+    function menuEl() {
+      return h("div", { class: "settings-menu" },
+        GROUPS.map((group) =>
+          h("div", { class: "menu-group", key: group.title }, [
+            h("div", { class: "menu-group-title" }, group.title),
+            h("div", { class: "card menu-card" },
+              group.items.map((item) =>
+                h("button", {
+                  key: item.key,
+                  class: ["menu-row", { active: isDesktop.value && section.value === item.key }],
+                  onClick: () => open(item.key),
+                }, [
+                  h("span", { class: "menu-icon" }, item.icon()),
+                  h("span", { class: "menu-label" }, item.label),
+                  h("span", { class: "menu-summary" }, summary.value[item.key] || ""),
+                  h("span", { class: "menu-chevron" }, Icons.chevronRight()),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      );
+    }
 
     return () => {
+      // 桌面：双栏（菜单 + 内容），永不进入单独子页。
+      if (isDesktop.value) {
+        const def = ALL_ITEMS.find((item) => item.key === section.value) || ALL_ITEMS[0];
+        return h("main", { class: "view settings-view" }, [
+          h("h2", { class: "view-title" }, "设置"),
+          h("div", { class: "settings-grid" }, [
+            menuEl(),
+            h("div", { class: "settings-content" }, [
+              h("h3", { class: "settings-content-title" }, def.label),
+              h(SECTION_COMPONENTS[def.key], { key: def.key }),
+            ]),
+          ]),
+        ]);
+      }
+
+      // 窄屏：菜单页 ↔ 子页。
       if (section.value) {
         const def = ALL_ITEMS.find((item) => item.key === section.value);
         return h("main", { class: "view settings-view" }, [
@@ -50,31 +107,13 @@ export const SettingsView = {
             h("span", { class: "section-title" }, def?.label || ""),
             h("span", { class: "section-head-pad" }),
           ]),
-          h(SECTION_COMPONENTS[section.value]),
+          h(SECTION_COMPONENTS[section.value], { key: section.value }),
         ]);
       }
 
       return h("main", { class: "view settings-view" }, [
         h("h2", { class: "view-title" }, "设置"),
-        ...GROUPS.map((group) =>
-          h("div", { class: "menu-group" }, [
-            h("div", { class: "menu-group-title" }, group.title),
-            h("div", { class: "card menu-card" },
-              group.items.map((item) =>
-                h("button", {
-                  key: item.key,
-                  class: "menu-row",
-                  onClick: () => open(item.key),
-                }, [
-                  h("span", { class: "menu-icon" }, item.icon),
-                  h("span", { class: "menu-label" }, item.label),
-                  h("span", { class: "menu-summary" }, summary.value[item.key] || ""),
-                  h("span", { class: "menu-chevron" }, "›"),
-                ]),
-              ),
-            ),
-          ]),
-        ),
+        menuEl(),
       ]);
     };
   },
@@ -90,27 +129,27 @@ const GROUPS = [
   {
     title: "账号与设备",
     items: [
-      { key: "mi", icon: "📱", label: "小米账号" },
-      { key: "devices", icon: "🔊", label: "播放设备" },
+      { key: "mi", icon: Icons.account, label: "小米账号" },
+      { key: "devices", icon: Icons.speaker, label: "播放设备" },
     ],
   },
   {
     title: "音源与内容",
     items: [
-      { key: "sources", icon: "🧩", label: "LX 音源插件" },
-      { key: "tracks", icon: "🎼", label: "手工曲目" },
+      { key: "sources", icon: Icons.plugin, label: "LX 音源插件" },
+      { key: "tracks", icon: Icons.file, label: "手工曲目" },
     ],
   },
   {
     title: "播放与诊断",
     items: [
-      { key: "config", icon: "⚙️", label: "运行配置" },
-      { key: "diag", icon: "🩺", label: "链路诊断" },
+      { key: "config", icon: Icons.sliders, label: "运行配置" },
+      { key: "diag", icon: Icons.pulse, label: "链路诊断" },
     ],
   },
   {
     title: "安全",
-    items: [{ key: "security", icon: "🔐", label: "修改密码" }],
+    items: [{ key: "security", icon: Icons.lock, label: "修改密码" }],
   },
 ];
 
@@ -173,7 +212,7 @@ const DevicesSection = {
           class: "secondary-btn",
           disabled: refreshing.value,
           onClick: refresh,
-        }, refreshing.value ? "刷新中…" : "🔄 从小米账号刷新设备"),
+        }, refreshing.value ? "刷新中…" : "从小米账号刷新设备"),
         devices.value.length === 0
           ? h("div", { class: "muted center" }, "暂无设备，请先登录小米账号后刷新")
           : h("div", { class: "device-list" },
@@ -190,7 +229,10 @@ const DevicesSection = {
                   ]),
                   h("span", { class: "device-side" }, [
                     d.isDefault ? h("span", { class: "badge" }, "默认") : null,
-                    h("button", { class: "ghost-btn", onClick: (e) => probe(d, e) }, "探测"),
+                    // 虚拟设备（本机播放）没有可探测的硬件能力
+                    d.type === "browser"
+                      ? null
+                      : h("button", { class: "ghost-btn", onClick: (e) => probe(d, e) }, "探测"),
                   ]),
                 ]),
               ),
@@ -369,7 +411,7 @@ const DiagSection = {
             class: "primary-btn",
             disabled: busy.value === "tone",
             onClick: playTestTone,
-          }, "▶ 播放测试音频"),
+          }, "播放测试音频"),
           h("div", { class: "muted" }, [
             h("span", { class: `dot dot-${pb.state || "idle"}` }),
             `${pb.state || "idle"}${pb.deviceName ? " · " + pb.deviceName : ""}`,
@@ -390,10 +432,10 @@ const DiagSection = {
               class: "secondary-btn",
               disabled: busy.value === "tts",
               onClick: speak,
-            }, "📢 播报"),
+            }, "播报"),
           ]),
         ]),
-        h("p", { class: "hint" }, "💡 两步都能出声，说明服务端 → 小爱音箱链路完全正常。"),
+        h("p", { class: "hint" }, "两步都能出声，说明服务端 → 小爱音箱链路完全正常。"),
       ]);
     };
   },

@@ -22,6 +22,8 @@ export type RuntimeConfig = {
     path: string;
     enabled?: boolean;
     defaultQuality?: "128k" | "320k" | "flac" | "hires";
+    // 订阅链接：从远程 URL 导入的插件记住来源，支持一键更新。
+    sourceUrl?: string;
   }>;
   // 补充内置 player_play_music 白名单的自定义小爱音箱型号（大写，如 "L20A"）。
   // 用于覆盖内置表未收录、直连播放静音的新机型。

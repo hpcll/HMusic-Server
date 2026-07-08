@@ -14,6 +14,7 @@ import {
   pausePlayback,
   playTrack,
   previousPlayback,
+  reportLocalPlayback,
   resumePlayback,
   seekPlayback,
   setPlaybackVolume,
@@ -47,6 +48,15 @@ const seekSchema = z
 const volumeSchema = z
   .object({
     volume: z.number().min(0).max(100),
+  })
+  .strict();
+
+const localReportSchema = z
+  .object({
+    state: z.enum(["playing", "paused", "stopped"]).optional(),
+    positionMs: z.number().nonnegative().optional(),
+    durationMs: z.number().nonnegative().optional(),
+    ended: z.boolean().optional(),
   })
   .strict();
 
@@ -108,6 +118,11 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
   app.post("/volume", async (request) => {
     const body = volumeSchema.parse(request.body);
     return setPlaybackVolume(body.volume);
+  });
+  // 本机播放（浏览器 <audio>）回写实际进度/状态；ended 时服务端推进队列。
+  app.post("/local-report", async (request) => {
+    const body = localReportSchema.parse(request.body ?? {});
+    return reportLocalPlayback(body);
   });
 
   app.post("/speak", async (request) => {

@@ -12,8 +12,29 @@ npm ci
 npm run build
 
 echo "[2/3] 打包运行所需文件…"
-# dist=后端产物, web=前端(含 vendored Vue), package*.json=服务器装依赖用
+# 校验前端运行时库齐全（缺任何一个都会让 SPA 在浏览器里崩，例如缺 qrcode.js
+# 会导致扫码登录点“生成二维码”时 window.qrcode 未定义、二维码永远出不来）。
+REQUIRED_VENDOR=(
+  "web/vendor/vue.esm-browser.prod.js"
+  "web/vendor/qrcode.js"
+)
+for f in "${REQUIRED_VENDOR[@]}"; do
+  if [[ ! -s "$f" ]]; then
+    echo "❌ 缺少前端运行时库：$f —— 打包中止，请先补齐 web/vendor/ 再打包。" >&2
+    exit 1
+  fi
+done
+# dist=后端产物, web=前端(含 vendored Vue + qrcode), package*.json=服务器装依赖用
 tar -czf "$OUT" dist web package.json package-lock.json .env.example README.md scripts
+
+echo "[2.5/3] 校验产物内已包含前端运行时库…"
+for f in "${REQUIRED_VENDOR[@]}"; do
+  if ! tar tzf "$OUT" | grep -qx "$f"; then
+    echo "❌ 产物 $OUT 内缺少 $f —— 打包失败。" >&2
+    rm -f "$OUT"
+    exit 1
+  fi
+done
 
 echo "[3/3] 完成：$OUT ($(du -h "$OUT" | cut -f1))"
 echo

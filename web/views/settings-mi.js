@@ -49,6 +49,13 @@ export const MiAccountSection = {
       stopQrTimers();
       qrStatus.value = "loading";
       qrMessage.value = "";
+      // 二维码库来自 index.html 的 <script src="vendor/qrcode.js">。若部署时漏带该文件，
+      // window.qrcode 会是 undefined —— 提前拦截并给出可操作的提示，而非抛含糊错误。
+      if (typeof window.qrcode !== "function") {
+        qrStatus.value = "failed";
+        qrMessage.value = "二维码组件未加载（缺 vendor/qrcode.js），请更新部署包或改用「账号密码」通道";
+        return;
+      }
       try {
         qr.value = await api("/mi/qr/start", { method: "POST" });
         const maker = window.qrcode(0, "M");
@@ -259,7 +266,7 @@ export const MiAccountSection = {
           : null,
         qrStatus.value === "success"
           ? h("div", { class: "qr-done" }, [
-              h("div", { class: "qr-ok" }, "✅ 登录成功"),
+              h("div", { class: "qr-ok" }, "登录成功"),
               h("p", { class: "muted" }, "设备已自动刷新，可去「播放设备」选默认音箱。"),
             ])
           : null,
@@ -313,7 +320,7 @@ export const MiAccountSection = {
         challenge.value
           ? h("section", { class: "card sms-card" }, [
               h("div", { class: "card-title" },
-                `📨 验证码已发至 ${challenge.value.maskedPhone || "绑定手机"}`),
+                `验证码已发至 ${challenge.value.maskedPhone || "绑定手机"}`),
               h("div", { class: "inline-form" }, [
                 h("input", {
                   placeholder: "短信验证码",

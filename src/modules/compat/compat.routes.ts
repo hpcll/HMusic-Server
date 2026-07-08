@@ -83,7 +83,10 @@ export async function compatRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/getsetting", { preHandler: requireCompatAuth }, async () => {
-    const devices = await listDevices();
+    // 兼容协议面向小爱音箱客户端，「本机播放」虚拟设备（浏览器）对它没有意义。
+    const devices = (await listDevices()).filter(
+      (device) => device.type !== "browser",
+    );
     const selected = devices.find((device) => device.isDefault);
 
     return {

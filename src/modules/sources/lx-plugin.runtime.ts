@@ -32,6 +32,48 @@ export type LxLyricResult = {
   translatedLrc?: string;
 };
 
+// 插件沙箱里的网络请求与动作执行必须有超时：原生 fetch 无超时，
+// 解析服务一慢 /playback/play 就永远挂起——前端表现为“点了播放没反应”。
+// （vm.runInContext 的 timeout 只约束同步执行，管不住异步 promise。）
+const PLUGIN_FETCH_TIMEOUT_MS = 15_000;
+const PLUGIN_ACTION_TIMEOUT_MS = 20_000;
+
+const fetchWithTimeout: typeof fetch = (input, init) =>
+  fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(PLUGIN_FETCH_TIMEOUT_MS),
+  });
+
+function withActionTimeout<T>(
+  pluginId: string,
+  action: string,
+  promise: Promise<T>,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new AppError(
+          "LX_PLUGIN_TIMEOUT",
+          `音源插件响应超时（${pluginId} · ${action}）`,
+          504,
+          { pluginId, action },
+        ),
+      );
+    }, PLUGIN_ACTION_TIMEOUT_MS);
+    timer.unref?.();
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export async function createLxPluginRuntime(
   plugin: LxPluginConfig,
 ): Promise<RuntimeResult> {
@@ -40,7 +82,7 @@ export async function createLxPluginRuntime(
   const lxApi = createLxApi(lxRequestHandlers);
   const context = vm.createContext({
     console,
-    fetch,
+    fetch: fetchWithTimeout,
     setTimeout,
     clearTimeout,
     URL,
@@ -58,7 +100,7 @@ export async function createLxPluginRuntime(
     timeout: 5000,
   });
 
-  return {
+  const actions: RuntimeResult = {
     search: async (query, page) => {
       const raw = await callPluginFunction(context, [
         `module.exports.search && module.exports.search({ keyword: ${JSON.stringify(query)}, page: ${page}, type: "music" })`,
@@ -93,7 +135,7 @@ export async function createLxPluginRuntime(
           source: track.source,
           action: "musicUrl",
           info: {
-            type: quality || "source",
+            type: quality || "320k",
             musicInfo,
           },
         },
@@ -129,6 +171,15 @@ export async function createLxPluginRuntime(
       );
       return normalizeLyricResult(eventResult);
     },
+  };
+
+  return {
+    search: (query, page) =>
+      withActionTimeout(plugin.id, "search", actions.search(query, page)),
+    resolve: (track, quality) =>
+      withActionTimeout(plugin.id, "resolve", actions.resolve(track, quality)),
+    lyric: (track) =>
+      withActionTimeout(plugin.id, "lyric", actions.lyric(track)),
   };
 }
 
@@ -194,8 +245,108 @@ function createLxApi(requestHandlers: LxRequestHandler[]) {
     send() {
       // Native bridge responses are not needed in the server runtime.
     },
-    request: fetch,
+    // lx-music 的核心 HTTP API：回调式 request(url, options, (err, resp) => ...)，
+    // resp 形如 { statusCode, headers, body }，body 会按 Content-Type 自动解析 JSON。
+    // 绝不能绑成 fetch —— 插件传入第三个 callback，fetch 会忽略它导致回调永不触发，
+    // 于是 getMusicUrl 里包裹的 Promise 永久挂起，/playback/play 卡死（前端点播放无反应）。
+    request: lxRequest,
   };
+}
+
+// 回调式 HTTP 客户端，兼容 lx-music 插件的 request(url, options, callback) 约定。
+// 也兼容不传 callback 时返回 Promise 的用法。
+function lxRequest(
+  url: string,
+  options: Record<string, unknown> = {},
+  callback?: (err: Error | null, resp?: LxResponse) => void,
+): Promise<LxResponse> | undefined {
+  const promise = performLxRequest(url, options);
+  if (typeof callback === "function") {
+    promise.then(
+      (resp) => callback(null, resp),
+      (err) => callback(err instanceof Error ? err : new Error(String(err))),
+    );
+    return undefined;
+  }
+  return promise;
+}
+
+type LxResponse = {
+  statusCode: number;
+  headers: Record<string, string>;
+  body: unknown;
+};
+
+async function performLxRequest(
+  url: string,
+  options: Record<string, unknown>,
+): Promise<LxResponse> {
+  const method = String(options.method || "GET").toUpperCase();
+  const headers = normalizeHeaders(options.headers);
+  const body = serializeRequestBody(options, headers);
+
+  const response = await fetchWithTimeout(url, {
+    method,
+    headers,
+    body,
+  });
+
+  const responseHeaders: Record<string, string> = {};
+  response.headers.forEach((value, key) => {
+    responseHeaders[key] = value;
+  });
+
+  const text = await response.text();
+  // lx 插件普遍直接读 body.xxx，因此这里按 Content-Type / JSON 特征自动解析。
+  let parsedBody: unknown = text;
+  const contentType = responseHeaders["content-type"] || "";
+  if (contentType.includes("json") || looksLikeJson(text)) {
+    try {
+      parsedBody = JSON.parse(text);
+    } catch {
+      parsedBody = text;
+    }
+  }
+
+  return {
+    statusCode: response.status,
+    headers: responseHeaders,
+    body: parsedBody,
+  };
+}
+
+function normalizeHeaders(raw: unknown): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (raw && typeof raw === "object") {
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (value != null) headers[key] = String(value);
+    }
+  }
+  return headers;
+}
+
+function serializeRequestBody(
+  options: Record<string, unknown>,
+  headers: Record<string, string>,
+): string | undefined {
+  // lx 插件用 body / formData / form 传请求体；GET 时无体。
+  const raw = options.body ?? options.formData ?? options.form;
+  if (raw == null) return undefined;
+  if (typeof raw === "string") return raw;
+  // 对象体默认按 JSON 发送，并补上 Content-Type。
+  if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) {
+    headers["Content-Type"] = "application/json";
+  }
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function looksLikeJson(text: string): boolean {
+  const trimmed = text.trimStart();
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
 }
 
 async function callLxRequestHandlers(
@@ -250,7 +401,9 @@ function normalizeSearchTracks(
           asString(row.pic) ||
           asString(row.img),
         url: extractUrl(row),
-        qualities: ["source", "128k", "320k", "flac"],
+        // LX 音源的标准音质档，插件读 info.type。绝不能含 "source"——
+        // 上游 /url?quality=source 会 500（'source' 不是合法档位）。
+        qualities: ["128k", "320k", "flac", "flac24bit"],
         raw: row,
       },
     ];

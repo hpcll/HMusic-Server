@@ -1,6 +1,8 @@
 import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
-import { refreshPlayback, toast } from "/app/main.js";
+import { Icons } from "/app/icons.js";
+import { Modal } from "/app/components/modal.js";
+import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 
 // 歌单页：列表 + 详情二级视图。家人朋友可保存喜欢的歌单并一键播放。
 export const PlaylistsView = {
@@ -9,6 +11,7 @@ export const PlaylistsView = {
     const detail = ref(null); // 非空时显示详情
     const newName = ref("");
     const busy = ref(false);
+    const createOpen = ref(false); // 「创建歌单」弹窗
 
     async function loadList() {
       try {
@@ -41,6 +44,7 @@ export const PlaylistsView = {
       try {
         await api("/playlists", { method: "POST", body: { name } });
         newName.value = "";
+        createOpen.value = false;
         await loadList();
         toast("歌单已创建", "success");
       } catch (error) {
@@ -48,6 +52,11 @@ export const PlaylistsView = {
       } finally {
         busy.value = false;
       }
+    }
+
+    function openCreate() {
+      newName.value = "";
+      createOpen.value = true;
     }
 
     async function deletePlaylist(id, event) {
@@ -62,6 +71,7 @@ export const PlaylistsView = {
     }
 
     async function playPlaylist(id, startIndex = 0) {
+      primeLocalAudio(); // 本机播放：手势内解锁 <audio>
       try {
         await api(`/playlists/${id}/play`, { method: "POST", body: { startIndex } });
         await refreshPlayback();
@@ -89,36 +99,58 @@ export const PlaylistsView = {
 
     function renderList() {
       return h("main", { class: "view playlists-view" }, [
-        h("h2", { class: "view-title" }, "歌单"),
-        h("div", { class: "inline-form" }, [
-          h("input", {
-            placeholder: "新歌单名称…",
-            value: newName.value,
-            onInput: (e) => (newName.value = e.target.value),
-            onKeyup: (e) => e.key === "Enter" && createPlaylist(),
-          }),
-          h("button", { class: "primary-btn", disabled: busy.value, onClick: createPlaylist }, "创建"),
+        h("div", { class: "view-head" }, [
+          h("h2", { class: "view-title" }, "歌单"),
+          h("button", { class: "primary-btn", onClick: openCreate }, [
+            Icons.plus(), "创建歌单",
+          ]),
         ]),
+        createOpen.value ? renderCreateModal() : null,
         playlists.value.length === 0
           ? h("div", { class: "muted center" }, "还没有歌单，创建一个吧")
           : h("div", { class: "playlist-grid" },
               playlists.value.map((p) =>
                 h("div", { key: p.id, class: "playlist-card card", onClick: () => openDetail(p.id) }, [
-                  h("div", { class: "pl-icon" }, "♫"),
+                  h("div", { class: "pl-icon" }, Icons.playlists()),
                   h("div", { class: "pl-meta" }, [
                     h("div", { class: "pl-name" }, p.name),
                     h("div", { class: "muted" }, `${p.trackCount} 首`),
                   ]),
                   h("div", { class: "pl-actions" }, [
                     h("button", { class: "icon-btn", title: "播放",
-                      onClick: (e) => { e.stopPropagation(); playPlaylist(p.id); } }, "▶"),
+                      onClick: (e) => { e.stopPropagation(); playPlaylist(p.id); } }, Icons.play()),
                     h("button", { class: "icon-btn", title: "删除",
-                      onClick: (e) => deletePlaylist(p.id, e) }, "✕"),
+                      onClick: (e) => deletePlaylist(p.id, e) }, Icons.close()),
                   ]),
                 ]),
               ),
             ),
       ]);
+    }
+
+    function renderCreateModal() {
+      return Modal(
+        {
+          title: "创建歌单",
+          onClose: () => (createOpen.value = false),
+          footer: [
+            h("button", { class: "secondary-btn", onClick: () => (createOpen.value = false) }, "取消"),
+            h("button", { class: "primary-btn", disabled: busy.value || !newName.value.trim(),
+              onClick: createPlaylist }, "创建"),
+          ],
+        },
+        [
+          h("input", {
+            class: "modal-input",
+            placeholder: "新歌单名称…",
+            value: newName.value,
+            // autofocus 由浏览器在挂载时处理
+            ref: (el) => el && el.focus?.(),
+            onInput: (e) => (newName.value = e.target.value),
+            onKeyup: (e) => e.key === "Enter" && createPlaylist(),
+          }),
+        ],
+      );
     }
 
     function renderDetail() {
@@ -128,7 +160,7 @@ export const PlaylistsView = {
         h("div", { class: "detail-head" }, [
           h("button", { class: "ghost-btn", onClick: backToList }, "‹ 返回"),
           h("button", { class: "secondary-btn", disabled: !items.length,
-            onClick: () => playPlaylist(d.id) }, "▶ 播放全部"),
+            onClick: () => playPlaylist(d.id) }, "播放全部"),
         ]),
         h("h2", { class: "view-title" }, d.name),
         d.description ? h("p", { class: "muted" }, d.description) : null,
@@ -145,7 +177,7 @@ export const PlaylistsView = {
                   ]),
                   h("div", { class: "track-actions" }, [
                     h("button", { class: "icon-btn", title: "从歌单移除",
-                      onClick: () => removeTrack(it.id) }, "✕"),
+                      onClick: () => removeTrack(it.id) }, Icons.close()),
                   ]),
                 ]),
               ),

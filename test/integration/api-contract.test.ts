@@ -162,7 +162,14 @@ describe("api contract", () => {
         headers,
       });
       expect(devices.statusCode).toBe(200);
-      expect(devices.json()).toEqual({ devices: [] });
+      // 未登录小米也恒有「本机播放」虚拟设备，且空库时它就是默认设备。
+      const deviceList = devices.json().devices;
+      expect(deviceList).toHaveLength(1);
+      expect(deviceList[0]).toMatchObject({
+        id: "local-browser",
+        isDefault: true,
+        isOnline: true,
+      });
 
       const miStatus = await app.inject({
         method: "GET",
@@ -396,7 +403,7 @@ describe("api contract", () => {
       expect(clientOriginResolved.json()).toEqual(
         expect.objectContaining({
           url: "https://example.com/client-origin.mp3",
-          quality: "source",
+          quality: "320k",
         }),
       );
 
@@ -425,7 +432,7 @@ describe("api contract", () => {
       expect(flutterClientResolved.json()).toEqual(
         expect.objectContaining({
           url: "https://example.com/client-origin.mp3",
-          quality: "source",
+          quality: "320k",
         }),
       );
       expect(flutterClientResolved.json().track).toEqual(
@@ -460,7 +467,7 @@ describe("api contract", () => {
       expect(lxEventResolved.json()).toEqual(
         expect.objectContaining({
           url: "https://example.com/lx-event.mp3",
-          quality: "source",
+          quality: "320k",
         }),
       );
 
@@ -896,16 +903,25 @@ describe("api contract", () => {
         headers,
       });
       expect(devicesAfterMiLogin.statusCode).toBe(200);
-      expect(devicesAfterMiLogin.json().devices).toEqual([
-        expect.objectContaining({
-          id: "xiaomi-speaker",
-          name: "客厅音箱",
-          type: "L06A",
-          ip: "192.168.1.20",
-          isOnline: true,
-          isDefault: true,
-        }),
-      ]);
+      // 小米设备之外恒有「本机播放」虚拟设备；登录同步会把首台音箱设为默认。
+      const devicesWithMi = devicesAfterMiLogin.json().devices;
+      expect(devicesWithMi).toHaveLength(2);
+      expect(devicesWithMi).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "xiaomi-speaker",
+            name: "客厅音箱",
+            type: "L06A",
+            ip: "192.168.1.20",
+            isOnline: true,
+            isDefault: true,
+          }),
+          expect.objectContaining({
+            id: "local-browser",
+            isDefault: false,
+          }),
+        ]),
+      );
 
       const refreshDevices = await app.inject({
         method: "POST",
@@ -1579,7 +1595,8 @@ describe("api contract", () => {
         headers,
       });
       expect(devicesAfterMock.statusCode).toBe(200);
-      expect(devicesAfterMock.json().devices).toHaveLength(2);
+      // xiaomi-speaker + mock-speaker + 常驻的「本机播放」虚拟设备
+      expect(devicesAfterMock.json().devices).toHaveLength(3);
       expect(devicesAfterMock.json().devices).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

@@ -138,3 +138,24 @@ export const playlistTracks = sqliteTable(
     ),
   }),
 );
+
+// 播放历史：家庭热播榜的数据源。冗余存曲目快照（title/artist/cover），
+// 不外键 tracks —— 搜索来的曲目未必入库，且历史应当独立于曲库存续。
+export const playHistory = sqliteTable(
+  "play_history",
+  {
+    id: text("id").primaryKey(),
+    trackKey: text("track_key").notNull(), // source:sourceTrackId，聚合去重用
+    source: text("source").notNull(),
+    title: text("title").notNull(),
+    artist: text("artist").notNull(),
+    album: text("album"),
+    coverUrl: text("cover_url"),
+    trackJson: text("track_json").notNull(), // 完整 HMusicTrack，榜单点播直接回放
+    playedAt: integer("played_at").notNull(),
+  },
+  (table) => ({
+    playedAtIndex: index("play_history_played_at_idx").on(table.playedAt),
+    trackKeyIndex: index("play_history_track_key_idx").on(table.trackKey),
+  }),
+);

@@ -1,6 +1,7 @@
 import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
-import { refreshPlayback, toast } from "/app/main.js";
+import { Icons } from "/app/icons.js";
+import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 
 const PLAY_MODES = [
   { value: "list_loop", label: "列表循环" },
@@ -25,6 +26,7 @@ export const QueueView = {
 
     async function playAt(index) {
       busy.value = true;
+      primeLocalAudio(); // 本机播放：手势内解锁 <audio>
       try {
         // 跳到该曲后触发播放（后端 setCurrentQueueIndex 只改指针，需再 play 当前曲）。
         await api("/queue/current", { method: "POST", body: { index } });
@@ -122,10 +124,10 @@ export const QueueView = {
                     h("button", {
                       class: "icon-btn", disabled: busy.value,
                       title: "播放", onClick: () => playAt(i),
-                    }, "▶"),
+                    }, Icons.play()),
                     h("button", {
                       class: "icon-btn", title: "移除", onClick: () => removeAt(i),
-                    }, "✕"),
+                    }, Icons.close()),
                   ]),
                 ]),
               ),

@@ -13,6 +13,39 @@ const defaultCapabilities: HMusicDevice["capabilities"] = {
   supportsDeviceNext: false,
 };
 
+// 「本机播放」虚拟设备：音频不发小爱音箱，由打开网页的浏览器 <audio> 播放。
+// 作为普通设备落库，选默认/切换逻辑全部复用；永远在线。
+export const LOCAL_DEVICE_ID = "local-browser";
+
+const localDeviceCapabilities: HMusicDevice["capabilities"] = {
+  supportsPlayUrl: true,
+  supportsPauseResume: true,
+  supportsSeek: true,
+  supportsVolume: true,
+  supportsRichStatus: false,
+  supportsDeviceNext: false,
+};
+
+async function ensureLocalDevice(
+  rows: Array<{ id: string }>,
+): Promise<boolean> {
+  if (rows.some((row) => row.id === LOCAL_DEVICE_ID)) return false;
+  await db
+    .insert(devicesTable)
+    .values({
+      id: LOCAL_DEVICE_ID,
+      name: "本机播放",
+      type: "browser",
+      isOnline: 1,
+      // 还没有任何设备（未登录小米）时直接当默认，开箱即可出声。
+      isDefault: rows.length === 0 ? 1 : 0,
+      capabilitiesJson: JSON.stringify(localDeviceCapabilities),
+      updatedAt: Date.now(),
+    })
+    .onConflictDoNothing();
+  return true;
+}
+
 export type UpsertDeviceInput = {
   id: string;
   name: string;
@@ -24,13 +57,17 @@ export type UpsertDeviceInput = {
 };
 
 export async function listDevices(): Promise<HMusicDevice[]> {
-  const rows = await db.select().from(devicesTable);
+  let rows = await db.select().from(devicesTable);
+  if (await ensureLocalDevice(rows)) {
+    rows = await db.select().from(devicesTable);
+  }
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
     type: row.type ?? undefined,
     ip: row.ip ?? undefined,
-    isOnline: row.isOnline === 1,
+    // 虚拟设备不存在“离线”，其它设备按探测结果。
+    isOnline: row.id === LOCAL_DEVICE_ID ? true : row.isOnline === 1,
     isDefault: row.isDefault === 1,
     capabilities: parseCapabilities(row.capabilitiesJson),
   }));

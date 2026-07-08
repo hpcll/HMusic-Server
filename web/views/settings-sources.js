@@ -1,13 +1,16 @@
 import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
+import { Icons } from "/app/icons.js";
 import { toast } from "/app/main.js";
 
-// LX 音源插件子页：列表（开关/测试/编辑/删除）+ 上传（选文件或粘贴代码）。
+// LX 音源插件子页：列表（开关/测试/编辑/更新/删除）
+// + 添加（订阅链接拉取 / 选文件 / 粘贴代码三通道，殊途同归都进表单）。
 export const SourcesSection = {
   setup() {
     const plugins = ref([]);
     const sources = ref([]); // 带 health 状态
     const busy = ref(false);
+    const updatingId = ref("");
 
     // 表单
     const formId = ref("");
@@ -15,6 +18,8 @@ export const SourcesSection = {
     const formCode = ref("");
     const formQuality = ref("320k");
     const formEnabled = ref(true);
+    const formSourceUrl = ref(""); // 订阅链接（拉取成功后随保存记录，供一键更新）
+    const fetchingUrl = ref(false);
 
     async function load() {
       try {
@@ -52,6 +57,31 @@ export const SourcesSection = {
       event.target.value = ""; // 允许重复选择同一文件
     }
 
+    // 订阅链接：后端代拉脚本，成功后预填表单（已有内容不覆盖，只补空位）。
+    async function fetchFromUrl() {
+      const url = formSourceUrl.value.trim();
+      if (!url) {
+        toast("先粘贴订阅链接", "error");
+        return;
+      }
+      fetchingUrl.value = true;
+      try {
+        const result = await api("/sources/lx-plugins/fetch", {
+          method: "POST",
+          body: { url },
+        });
+        formCode.value = result.code;
+        if (!formName.value && result.meta?.name) formName.value = result.meta.name;
+        if (!formId.value) formId.value = suggestPluginId(result.meta?.name, url);
+        const version = result.meta?.version ? ` v${result.meta.version}` : "";
+        toast(`已拉取「${result.meta?.name || "未命名脚本"}」${version}，确认后保存`, "success");
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        fetchingUrl.value = false;
+      }
+    }
+
     async function savePlugin() {
       if (!formId.value.trim() || !formName.value.trim() || !formCode.value.trim()) {
         toast("插件 ID、名称和代码都不能为空", "error");
@@ -67,17 +97,37 @@ export const SourcesSection = {
             code: formCode.value,
             enabled: formEnabled.value,
             defaultQuality: formQuality.value,
+            ...(formSourceUrl.value.trim()
+              ? { sourceUrl: formSourceUrl.value.trim() }
+              : {}),
           },
         });
         formId.value = "";
         formName.value = "";
         formCode.value = "";
+        formSourceUrl.value = "";
         await load();
         toast("插件已保存", "success");
       } catch (error) {
         toast(error.message, "error");
       } finally {
         busy.value = false;
+      }
+    }
+
+    // 订阅导入的插件一键更新：后端按记住的链接重拉并保存。
+    async function updatePlugin(plugin) {
+      updatingId.value = plugin.id;
+      try {
+        await api(`/sources/lx-plugins/${encodeURIComponent(plugin.id)}/update`, {
+          method: "POST",
+        });
+        await load();
+        toast(`「${plugin.name}」已从订阅链接更新`, "success");
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        updatingId.value = "";
       }
     }
 
@@ -109,6 +159,7 @@ export const SourcesSection = {
         formCode.value = codeResult.code || "";
         formQuality.value = plugin.defaultQuality || "320k";
         formEnabled.value = plugin.enabled !== false;
+        formSourceUrl.value = plugin.sourceUrl || "";
         toast("插件已载入下方表单，改完保存即可", "info");
       } catch (error) {
         toast(error.message, "error");
@@ -150,7 +201,7 @@ export const SourcesSection = {
                 h("section", { key: p.id, class: "card plugin-card" }, [
                   h("div", { class: "kv" }, [
                     h("div", null, [
-                      h("div", { class: "track-title" }, `🧩 ${p.name}`),
+                      h("div", { class: "track-title" }, p.name),
                       h("div", { class: "muted" }, [
                         h("span", { class: `dot dot-${healthOf(p.id) === "ok" ? "playing" : healthOf(p.id) === "failed" ? "error" : "idle"}` }),
                         `${p.id} · ${p.defaultQuality || "320k"} · 健康 ${healthOf(p.id)}`,
@@ -168,6 +219,14 @@ export const SourcesSection = {
                   h("div", { class: "plugin-actions" }, [
                     h("button", { class: "secondary-btn", onClick: () => testPlugin(p) }, "测试"),
                     h("button", { class: "secondary-btn", onClick: () => editPlugin(p) }, "编辑"),
+                    p.sourceUrl
+                      ? h("button", {
+                          class: "secondary-btn",
+                          disabled: updatingId.value === p.id,
+                          title: p.sourceUrl,
+                          onClick: () => updatePlugin(p),
+                        }, updatingId.value === p.id ? "更新中…" : "更新")
+                      : null,
                     h("button", { class: "danger-btn", onClick: () => deletePlugin(p) }, "删除"),
                   ]),
                 ]),
@@ -176,9 +235,27 @@ export const SourcesSection = {
 
         h("section", { class: "card" }, [
           h("div", { class: "card-title" }, "添加 / 编辑插件"),
+          h("label", { class: "field" }, [
+            "订阅链接（推荐）",
+            h("div", { class: "inline-form" }, [
+              h("input", {
+                placeholder: "https://…/script?key=xxx",
+                value: formSourceUrl.value,
+                onInput: (e) => (formSourceUrl.value = e.target.value),
+                onKeyup: (e) => e.key === "Enter" && fetchFromUrl(),
+              }),
+              h("button", {
+                class: "primary-btn",
+                disabled: fetchingUrl.value,
+                onClick: fetchFromUrl,
+              }, fetchingUrl.value ? "拉取中…" : "拉取"),
+            ]),
+            h("small", { class: "hint" },
+              "服务端会拉取脚本并预填下方表单；保存后列表里可一键「更新」。"),
+          ]),
           h("label", { class: "file-pick" }, [
             h("input", { type: "file", accept: ".js", onChange: onPickFile, style: { display: "none" } }),
-            "📂 选择 .js 插件文件",
+            "或选择 .js 插件文件",
           ]),
           h("div", { class: "muted center" }, "或粘贴插件代码 ↓"),
           h("textarea", {
@@ -232,6 +309,24 @@ export const SourcesSection = {
       ]);
   },
 };
+
+// 订阅拉取后给插件 ID 一个可用的默认值：优先脚本名的 ASCII slug，
+// 中文名 slug 后为空时退回域名 slug（如 lx.010504.xyz → lx-010504-xyz）。
+function suggestPluginId(name, url) {
+  const slug = (text) =>
+    (text || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 32);
+  const fromName = slug(name);
+  if (fromName) return fromName;
+  try {
+    return slug(new URL(url).hostname.replace(/\./g, "-")) || "lx-plugin";
+  } catch {
+    return "lx-plugin";
+  }
+}
 
 // 手工曲目子页：直接可播的音频 URL 列表（存 config.manualTracks）。
 export const TracksSection = {
@@ -307,7 +402,7 @@ export const TracksSection = {
                     h("div", { class: "track-title" }, t.title),
                     h("div", { class: "track-artist" }, t.artist || t.url),
                   ]),
-                  h("button", { class: "icon-btn", onClick: () => removeTrack(i) }, "✕"),
+                  h("button", { class: "icon-btn", onClick: () => removeTrack(i) }, Icons.close()),
                 ]),
               ),
             ),
