@@ -13,6 +13,10 @@ import type {
 import { AppError } from "../../shared/errors.js";
 import { playTrack } from "../playback/playback.service.js";
 import { replaceQueue } from "../queue/queue.service.js";
+import {
+  importPlaylistFromUrl,
+  platformDisplayName,
+} from "./playlist-import.service.js";
 
 type PlaylistRow = typeof playlists.$inferSelect;
 type PlaylistTrackRow = typeof playlistTracks.$inferSelect;
@@ -50,6 +54,76 @@ export async function createPlaylist(input: {
   });
 
   return getPlaylist(id);
+}
+
+export type ImportPlaylistResult = {
+  playlist: HMusicPlaylistDetail;
+  platform: string;
+  platformName: string;
+  imported: number;
+  totalCount: number;
+  skipped: {
+    emptyTitle: number;
+    duplicate: number;
+    truncated: number;
+  };
+};
+
+// 歌单导入：抓取远端歌单 → 新建本地歌单 → 批量入库曲目并建立曲目关联。
+// 歌单名默认取远端标题，可由 input.name 覆盖。
+export async function importPlaylist(input: {
+  url: string;
+  name?: string;
+}): Promise<ImportPlaylistResult> {
+  const fetched = await importPlaylistFromUrl(input.url);
+  const name = normalizeName(input.name?.trim() || fetched.name);
+
+  const now = Date.now();
+  const playlistId = nanoid(12);
+  await db.insert(playlists).values({
+    id: playlistId,
+    name,
+    description: `从${platformDisplayName(fetched.platform)}导入 · 共${fetched.totalCount}首`,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  let position = 0;
+  for (const track of fetched.tracks) {
+    const trackId = await upsertStoredTrack(track);
+    // 同一歌单内去重（远端已清洗，这里再兜底一次防并发/重名）。
+    const existing = await db
+      .select()
+      .from(playlistTracks)
+      .where(
+        and(
+          eq(playlistTracks.playlistId, playlistId),
+          eq(playlistTracks.trackId, trackId),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) continue;
+
+    await db.insert(playlistTracks).values({
+      id: nanoid(16),
+      playlistId,
+      trackId,
+      position: position++,
+      addedAt: Date.now(),
+    });
+  }
+
+  await touchPlaylist(playlistId);
+  const playlist = await getPlaylist(playlistId);
+
+  return {
+    playlist,
+    platform: fetched.platform,
+    platformName: platformDisplayName(fetched.platform),
+    imported: playlist.items.length,
+    totalCount: fetched.totalCount,
+    skipped: fetched.skipped,
+  };
 }
 
 export async function getPlaylist(

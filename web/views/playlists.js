@@ -12,6 +12,9 @@ export const PlaylistsView = {
     const newName = ref("");
     const busy = ref(false);
     const createOpen = ref(false); // 「创建歌单」弹窗
+    const importOpen = ref(false); // 「导入歌单」弹窗
+    const importUrl = ref(""); // 粘贴的分享链接
+    const importing = ref(false);
 
     async function loadList() {
       try {
@@ -59,6 +62,43 @@ export const PlaylistsView = {
       createOpen.value = true;
     }
 
+    function openImport() {
+      importUrl.value = "";
+      importOpen.value = true;
+    }
+
+    // 导入歌单：粘贴 QQ音乐/酷我/网易云 分享链接，服务端抓取后落库。
+    async function importPlaylist() {
+      const url = importUrl.value.trim();
+      if (!url) return;
+      importing.value = true;
+      try {
+        const result = await api("/playlists/import", {
+          method: "POST",
+          body: { url },
+        });
+        importUrl.value = "";
+        importOpen.value = false;
+        await loadList();
+        const parts = [`《${result.playlist.name}》已导入 ${result.imported} 首`];
+        const skip = result.skipped || {};
+        const skipTotal =
+          (skip.duplicate || 0) + (skip.emptyTitle || 0) + (skip.truncated || 0);
+        if (skipTotal > 0) {
+          const detailParts = [];
+          if (skip.duplicate) detailParts.push(`去重 ${skip.duplicate}`);
+          if (skip.truncated) detailParts.push(`超上限截断 ${skip.truncated}`);
+          if (skip.emptyTitle) detailParts.push(`无效 ${skip.emptyTitle}`);
+          parts.push(`（跳过 ${detailParts.join("、")}）`);
+        }
+        toast(parts.join(""), "success");
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        importing.value = false;
+      }
+    }
+
     async function deletePlaylist(id, event) {
       event.stopPropagation();
       try {
@@ -101,11 +141,17 @@ export const PlaylistsView = {
       return h("main", { class: "view playlists-view" }, [
         h("div", { class: "view-head" }, [
           h("h2", { class: "view-title" }, "歌单"),
-          h("button", { class: "primary-btn", onClick: openCreate }, [
-            Icons.plus(), "创建歌单",
+          h("div", { class: "head-actions" }, [
+            h("button", { class: "secondary-btn", onClick: openImport }, [
+              Icons.plus(), "导入歌单",
+            ]),
+            h("button", { class: "primary-btn", onClick: openCreate }, [
+              Icons.plus(), "创建歌单",
+            ]),
           ]),
         ]),
         createOpen.value ? renderCreateModal() : null,
+        importOpen.value ? renderImportModal() : null,
         playlists.value.length === 0
           ? h("div", { class: "muted center" }, "还没有歌单，创建一个吧")
           : h("div", { class: "playlist-grid" },
@@ -148,6 +194,33 @@ export const PlaylistsView = {
             ref: (el) => el && el.focus?.(),
             onInput: (e) => (newName.value = e.target.value),
             onKeyup: (e) => e.key === "Enter" && createPlaylist(),
+          }),
+        ],
+      );
+    }
+
+    function renderImportModal() {
+      return Modal(
+        {
+          title: "导入歌单",
+          onClose: () => (importOpen.value = false),
+          footer: [
+            h("button", { class: "secondary-btn", disabled: importing.value,
+              onClick: () => (importOpen.value = false) }, "取消"),
+            h("button", { class: "primary-btn", disabled: importing.value || !importUrl.value.trim(),
+              onClick: importPlaylist }, importing.value ? "导入中…" : "开始导入"),
+          ],
+        },
+        [
+          h("p", { class: "muted", style: { marginTop: "0" } },
+            "粘贴 QQ音乐 / 酷我 / 网易云 的歌单分享链接，最多导入 500 首。"),
+          h("textarea", {
+            class: "modal-input",
+            rows: 3,
+            placeholder: "粘贴歌单链接或整段分享文案…",
+            value: importUrl.value,
+            ref: (el) => el && el.focus?.(),
+            onInput: (e) => (importUrl.value = e.target.value),
           }),
         ],
       );

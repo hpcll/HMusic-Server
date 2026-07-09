@@ -1031,3 +1031,5 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 .view-head .view-title { margin: 0; }
 .view-head .primary-btn { white-space: nowrap; flex: none; }
+.view-head .head-actions { display: flex; gap: 8px; flex: none; }
+.view-head .head-actions .secondary-btn { white-space: nowrap; flex: none; }

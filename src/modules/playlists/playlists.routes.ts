@@ -13,6 +13,7 @@ import {
   createPlaylist,
   deletePlaylist,
   getPlaylist,
+  importPlaylist,
   listPlaylists,
   playPlaylist,
   removePlaylistTrack,
@@ -56,6 +57,13 @@ const playPlaylistSchema = z
   })
   .strict();
 
+const importPlaylistSchema = z
+  .object({
+    url: z.string().min(1).max(2000),
+    name: z.string().min(1).max(80).optional(),
+  })
+  .strict();
+
 export async function playlistsRoutes(app: FastifyInstance): Promise<void> {
   requireAuth(app);
 
@@ -64,6 +72,11 @@ export async function playlistsRoutes(app: FastifyInstance): Promise<void> {
   app.post("/", async (request) => {
     const body = createPlaylistSchema.parse(request.body);
     return { playlist: await createPlaylist(body) };
+  });
+
+  app.post("/import", async (request) => {
+    const body = importPlaylistSchema.parse(request.body);
+    return importPlaylist(body);
   });
 
   app.get("/:id", async (request) => {
