@@ -686,6 +686,11 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 .track-row:last-child { border-bottom: none; }
 .track-row:hover { background: var(--panel); }
+/* 宽屏双列曲目（榜单/歌单详情）：50 首减半滚动、填满横向空间；队列保持单列 */
+@media (min-width: 861px) {
+  .track-cols { grid-template-columns: 1fr 1fr; column-gap: 28px; }
+  .track-cols .track-row:nth-last-child(-n+2) { border-bottom: none; }
+}
 .track-cover {
   width: 44px; height: 44px; border-radius: 6px; flex-shrink: 0;
   border: 1px solid var(--line-soft);
@@ -764,6 +769,85 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 .chart-count { color: var(--accent); }
 .chart-list { counter-reset: none; }
+
+/* 卡片墙：按来源分组的榜单入口，卡片直接亮前 3 首 */
+.chart-group-label { font-size: 13px; color: var(--muted); margin: 0 2px 10px; }
+.chart-wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+.chart-card {
+  gap: 8px;
+  padding: 14px 16px;
+  min-height: 152px;
+  align-content: start;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+.chart-card:hover { border-color: var(--muted); }
+.chart-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chart-card-cover {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-soft);
+  background: var(--panel-2) center/cover no-repeat;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 15px;
+}
+.chart-card-name {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chart-card-desc { font-size: 12px; color: var(--muted); }
+.chart-card-songs { display: grid; gap: 6px; }
+.chart-card-song {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 13px;
+  min-width: 0;
+}
+.chart-card-song .cc-rank {
+  flex: none;
+  width: 13px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.chart-card-song .cc-title {
+  flex: 0 1 auto;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chart-card-song .cc-artist {
+  flex: 1 1 30%;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chart-card-song:hover .cc-title {
+  color: var(--text-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.chart-card-more { font-size: 12px; color: var(--muted); text-align: right; }
+@media (max-width: 859px) {
+  .chart-wall { grid-template-columns: 1fr; gap: 10px; }
+}
 
 /* ============ 歌单页 ============ */
 .playlist-grid {

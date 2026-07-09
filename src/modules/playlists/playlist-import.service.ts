@@ -273,7 +273,7 @@ async function fetchQQMusicu(id: string) {
   return { name, totalCount: tracks.length, tracks };
 }
 
-function parseQQSong(song: any): HMusicTrack | undefined {
+export function parseQQSong(song: any): HMusicTrack | undefined {
   const id = String(song.songmid ?? song.mid ?? song.id ?? "").trim();
   const title = String(song.songname ?? song.title ?? "").trim();
   if (!id || !title) return undefined;
@@ -407,16 +407,30 @@ async function fetchKuwoToken(): Promise<string | null> {
 }
 
 // ---- 网易云（wy）----
-async function fetchNetease(id: string) {
+// maxSongs：调用方可收紧拉取上限（榜单只要前 50 首，避免白拉几百首批量详情）。
+export async function fetchNetease(id: string, maxSongs = MAX_IMPORT_SONGS) {
   return withFallback(
     "wy",
-    () => fetchNeteaseEndpoint("https://music.163.com/api/playlist/detail", id),
     () =>
-      fetchNeteaseEndpoint("https://music.163.com/api/v6/playlist/detail", id),
+      fetchNeteaseEndpoint(
+        "https://music.163.com/api/playlist/detail",
+        id,
+        maxSongs,
+      ),
+    () =>
+      fetchNeteaseEndpoint(
+        "https://music.163.com/api/v6/playlist/detail",
+        id,
+        maxSongs,
+      ),
   );
 }
 
-async function fetchNeteaseEndpoint(endpoint: string, id: string) {
+async function fetchNeteaseEndpoint(
+  endpoint: string,
+  id: string,
+  maxSongs: number,
+) {
   const init: RequestInit = { headers: { Referer: "https://music.163.com/" } };
   const data = await fetchJson(
     `${endpoint}?${new URLSearchParams({ id }).toString()}`,
@@ -435,7 +449,7 @@ async function fetchNeteaseEndpoint(endpoint: string, id: string) {
     const allIds = trackIds
       .map((e: any) => (e && typeof e === "object" ? String(e.id ?? "") : String(e ?? "")))
       .filter((s: string) => s.length > 0)
-      .slice(0, MAX_IMPORT_SONGS);
+      .slice(0, maxSongs);
     const tracks = await fetchNeteaseSongDetails(allIds, init);
     if (tracks.length > 0) {
       return { name, totalCount: trackIds.length, tracks };
@@ -574,7 +588,7 @@ async function withFallback<T>(
   }
 }
 
-async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
+export async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
   const resp = await fetch(url, {
     ...init,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),

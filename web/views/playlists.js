@@ -239,7 +239,7 @@ export const PlaylistsView = {
         d.description ? h("p", { class: "muted" }, d.description) : null,
         items.length === 0
           ? h("div", { class: "muted center" }, "歌单是空的，在搜索里加歌到队列或歌单")
-          : h("ul", { class: "track-list" },
+          : h("ul", { class: "track-list track-cols" },
               items.map((it, i) =>
                 h("li", { key: it.id, class: "track-row" }, [
                   h("div", { class: "queue-index" }, String(i + 1)),
