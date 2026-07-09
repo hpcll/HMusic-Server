@@ -104,6 +104,22 @@ export const ChartsView = {
       }
     }
 
+    // 整榜播放：50 首一把灌进队列开播（仅条目带 track 的榜显示按钮）。
+    async function playAll() {
+      if (actingRank.value) return;
+      actingRank.value = -1; // 占位防连点（不与任何 rank 相等）
+      primeLocalAudio();
+      try {
+        await api(`/charts/${active.value.id}/play`, { method: "POST", body: {} });
+        await refreshPlayback();
+        toast(`整榜播放：${active.value.name}`, "success");
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        actingRank.value = 0;
+      }
+    }
+
     onMounted(loadCharts);
 
     return () => (active.value ? renderDetail() : renderWall());
@@ -181,6 +197,13 @@ export const ChartsView = {
       return h("main", { class: "view charts-view" }, [
         h("div", { class: "detail-head" }, [
           h("button", { class: "ghost-btn", onClick: backToWall }, "‹ 返回"),
+          chart.value && chart.value.entries.some((e) => e.track)
+            ? h("button", {
+                class: "secondary-btn",
+                disabled: actingRank.value !== 0,
+                onClick: playAll,
+              }, "播放全部")
+            : null,
         ]),
         h("h2", { class: "view-title" }, active.value.name),
         active.value.description
