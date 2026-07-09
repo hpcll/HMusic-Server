@@ -1043,6 +1043,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 .stat-bignum { padding: 16px 18px; gap: 4px; text-align: left; }
 .stat-num {
+  font-family: var(--font-serif);
   font-size: 30px;
   font-weight: 700;
   color: var(--text-strong);
@@ -1064,16 +1065,17 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 /* 折线趋势 */
 .trend-line {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--text-strong);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
-.trend-area { fill: var(--accent); opacity: 0.12; stroke: none; }
+.trend-area { fill: var(--text-strong); opacity: 0.08; stroke: none; }
 
-/* 时段柱状 */
-.hour-bar { fill: var(--accent); opacity: 0.8; }
+/* 时段柱状。黑白图表的焦点语法：峰值/第一名上最深墨（同 .chart-rank.top）*/
+.hour-bar { fill: var(--muted-2); opacity: 0.85; }
+.hour-bar.peak { fill: var(--text-strong); opacity: 1; }
 
 /* 来源环形图 + 图例 */
 .stat-source { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
@@ -1103,8 +1105,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   border-radius: 5px;
   overflow: hidden;
 }
-.bar-fill { height: 100%; background: var(--accent); border-radius: 5px; }
-.bar-fill.alt { background: #7c9cff; }
+.bar-fill { height: 100%; background: var(--muted-2); opacity: 0.72; border-radius: 5px; }
+.bar-fill.lead { background: var(--text-strong); opacity: 1; }
 .bar-val { width: 40px; flex: none; text-align: right; font-size: 12px; color: var(--muted-2); }
 
 /* 窄屏：卡片区两列，来源图纵向堆叠 */

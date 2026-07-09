@@ -152,7 +152,7 @@ function renderHours(hours) {
       width: barW,
       height: bh,
       rx: 1.5,
-      class: "hour-bar",
+      class: ["hour-bar", { peak: hh.count === max }],
     });
   });
 
@@ -181,7 +181,11 @@ function renderSources(sources) {
   const CX = 70;
   const CY = 70;
   const circ = 2 * Math.PI * R;
-  const palette = ["var(--accent)", "#7c9cff", "#f0a35e", "#5ec4a6", "#c77dff"];
+  // 纯墨色版：占比最大那块（已按 count 降序，index 0）用最深墨色，
+  // 其余走中性灰阶——透明度下限 0.45，保证最浅扇区和底环拉得开。
+  const grayAlpha = [1, 0.9, 0.65, 0.45];
+  const strokeOf = (i) => (i === 0 ? "var(--text-strong)" : "var(--muted-2)");
+  const alphaOf = (i) => (i === 0 ? 1 : grayAlpha[Math.min(i, grayAlpha.length - 1)]);
 
   let offset = 0;
   const rings = sources.map((src, i) => {
@@ -192,7 +196,8 @@ function renderSources(sources) {
       cy: CY,
       r: R,
       fill: "none",
-      stroke: palette[i % palette.length],
+      stroke: strokeOf(i),
+      "stroke-opacity": alphaOf(i),
       "stroke-width": 16,
       "stroke-dasharray": `${len} ${circ - len}`,
       "stroke-dashoffset": -offset,
@@ -206,14 +211,17 @@ function renderSources(sources) {
     class: "stat-donut",
     viewBox: "0 0 140 140",
   }, [
-    h("circle", { cx: CX, cy: CY, r: R, fill: "none", stroke: "var(--line)", "stroke-width": 16 }),
+    h("circle", { cx: CX, cy: CY, r: R, fill: "none", stroke: "var(--line-soft)", "stroke-width": 16 }),
     ...rings,
   ]);
 
   const legend = h("div", { class: "stat-legend" },
     sources.map((src, i) =>
       h("div", { key: src.source, class: "legend-item" }, [
-        h("span", { class: "legend-dot", style: { background: palette[i % palette.length] } }),
+        h("span", {
+          class: "legend-dot",
+          style: { background: strokeOf(i), opacity: alphaOf(i) },
+        }),
         h("span", { class: "legend-label" }, src.label),
         h("span", { class: "muted legend-val" }, `${src.count} · ${src.percent}%`),
       ]),
@@ -233,11 +241,14 @@ function renderTopArtists(artists) {
   return h("div", { class: "card" }, [
     h("div", { class: "card-title" }, "常听艺术家 Top 10"),
     h("div", { class: "stat-bars" },
-      artists.map((a) =>
+      artists.map((a, i) =>
         h("div", { key: a.name, class: "bar-row" }, [
           h("div", { class: "bar-name" }, a.name),
           h("div", { class: "bar-track" }, [
-            h("div", { class: "bar-fill", style: { width: `${(a.playCount / max) * 100}%` } }),
+            h("div", {
+              class: ["bar-fill", { lead: i === 0 }],
+              style: { width: `${(a.playCount / max) * 100}%` },
+            }),
           ]),
           h("div", { class: "bar-val" }, `${a.playCount}`),
         ]),
@@ -287,11 +298,14 @@ function renderTopAlbums(albums) {
   return h("div", { class: "card" }, [
     h("div", { class: "card-title" }, "常听专辑 Top 8"),
     h("div", { class: "stat-bars" },
-      albums.map((a) =>
+      albums.map((a, i) =>
         h("div", { key: a.album, class: "bar-row" }, [
           h("div", { class: "bar-name" }, a.album),
           h("div", { class: "bar-track" }, [
-            h("div", { class: "bar-fill alt", style: { width: `${(a.playCount / max) * 100}%` } }),
+            h("div", {
+              class: ["bar-fill", { lead: i === 0 }],
+              style: { width: `${(a.playCount / max) * 100}%` },
+            }),
           ]),
           h("div", { class: "bar-val" }, `${a.playCount}`),
         ]),
