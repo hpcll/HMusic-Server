@@ -7,6 +7,7 @@ import { SearchView } from "/app/views/search.js";
 import { QueueView } from "/app/views/queue.js";
 import { PlaylistsView } from "/app/views/playlists.js";
 import { ChartsView } from "/app/views/charts.js";
+import { StatsView } from "/app/views/stats.js";
 import { SettingsView } from "/app/views/settings.js";
 
 // ===== 全局响应式状态 =====
@@ -219,6 +220,7 @@ const routes = {
   queue: { component: QueueView, requiresAuth: true, label: "队列", icon: Icons.queue },
   playlists: { component: PlaylistsView, requiresAuth: true, label: "歌单", icon: Icons.playlists },
   charts: { component: ChartsView, requiresAuth: true, label: "榜单", icon: Icons.charts },
+  stats: { component: StatsView, requiresAuth: true, label: "统计", icon: Icons.stats },
   settings: { component: SettingsView, requiresAuth: true, label: "设置", icon: Icons.settings },
   login: { component: LoginView, requiresAuth: false },
 };
@@ -249,7 +251,7 @@ window.addEventListener("hashchange", applyRoute);
 // ===== 根组件 =====
 // 桌面：左侧固定 sidebar（品牌 / 导航 / mini 播放状态 / 用户）+ 右侧内容区。
 // 窄屏（<860px）：sidebar 隐藏，回退为顶栏 + 底部导航（CSS 媒体查询切换）。
-const NAV_ITEMS = ["player", "search", "queue", "playlists", "charts", "settings"];
+const NAV_ITEMS = ["player", "search", "queue", "playlists", "charts", "stats", "settings"];
 
 const App = {
   setup() {

@@ -18,6 +18,7 @@ import { proxyRoutes } from "./modules/proxy/proxy.routes.js";
 import { queueRoutes } from "./modules/queue/queue.routes.js";
 import { searchRoutes } from "./modules/search/search.routes.js";
 import { sourcesRoutes } from "./modules/sources/sources.routes.js";
+import { statsRoutes } from "./modules/stats/stats.routes.js";
 import { systemRoutes } from "./modules/system/system.routes.js";
 import { webRoutes } from "./modules/web/web.routes.js";
 import { registerErrorHandler } from "./shared/errors.js";
@@ -62,6 +63,7 @@ export async function buildApp() {
   await app.register(playlistsRoutes, { prefix: "/api/v1/playlists" });
   await app.register(lyricsRoutes, { prefix: "/api/v1/tracks" });
   await app.register(chartsRoutes, { prefix: "/api/v1/charts" });
+  await app.register(statsRoutes, { prefix: "/api/v1/stats" });
 
   return app;
 }
