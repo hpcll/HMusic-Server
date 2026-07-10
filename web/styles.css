@@ -443,18 +443,25 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 /* ============ 播放页（大封面 + 同步歌词双栏） ============ */
 /* 内容垂直居中占满视口高度（否则整块顶在上方，下半屏全空，看着没居中）；
    封面栏与歌词栏作为一对整体在内容区水平居中，两栏各自限宽、居中对齐。 */
+/* 内容盒与其他 tab 同宽（880 居中）——之前独占 1200 导致宽屏下
+   封面左缘贴近侧边栏分割线，与其余页面的留白不一致。 */
+/* 播放页与其他 tab 同为 880 居中——封面左边距因此和所有页面完全一致。
+   右侧空白由歌词栏单独向右挣脱边界来填充（见 .np-grid margin-right），
+   不动画布本身的居中，避免封面左边距跟着变。 */
 .player-view {
-  max-width: 1200px;
   min-height: calc(100vh - 96px);
   align-content: center;
 }
 
 .np-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 460px) minmax(320px, 480px);
-  justify-content: center;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
   align-items: center;
-  gap: 64px;
+  gap: 56px;
+  /* 歌词栏(右列 1fr)向右溢出 880 边界，吃掉右侧留白（留 40px 边距）。
+     右侧留白 = (视口 - 侧栏 - 880内容盒)/2；封面(左列固定)纹丝不动。
+     依赖 --sidebar-w 与 .view 的 880 max-width，改动它们时同步。 */
+  margin-right: calc(40px - max(0px, (100vw - var(--sidebar-w) - 880px) / 2));
 }
 @media (max-width: 1023px) {
   .np-grid { grid-template-columns: 1fr; gap: 24px; justify-content: stretch; }
@@ -671,7 +678,12 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 @media (max-width: 859px) { .np-footer { grid-template-columns: 1fr; gap: 16px; } }
 
 /* 进度条 */
-.progress-row { display: flex; align-items: center; gap: 12px; }
+.progress-row {
+  display: flex; align-items: center; gap: 12px;
+  /* 与上方「标题/歌手/状态」拉开呼吸区，让进度+主控作为一组整体下沉，
+     底部大致与右栏歌词收口对齐 */
+  margin-top: 40px;
+}
 .progress-time {
   font-size: 12px; color: var(--muted);
   font-variant-numeric: tabular-nums;
