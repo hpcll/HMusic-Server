@@ -158,8 +158,32 @@ localAudio.addEventListener("ended", async () => {
   }
 });
 
-localAudio.addEventListener("error", () => {
+// 音源直链有时效，播放中途/长暂停后恢复都可能 403。<audio> 报错时自动
+// 原曲重解析续播一次（带当前进度），同曲 60s 内只救一次，防坏源死循环。
+let recoverKey = "";
+let recoverAt = 0;
+
+localAudio.addEventListener("error", async () => {
   if (!isLocalPlayback() || !localAudio.src) return;
+  const track = store.playback?.track;
+  const key = track ? `${track.source}:${track.sourceTrackId}` : "";
+  const positionMs =
+    Math.round(localAudio.currentTime * 1000) || store.playback?.positionMs || 0;
+  if (track && !(key === recoverKey && Date.now() - recoverAt < 60000)) {
+    recoverKey = key;
+    recoverAt = Date.now();
+    toast("音源链接失效，正在自动续播…", "info");
+    try {
+      store.playback = await api("/playback/play", {
+        method: "POST",
+        body: { track, positionMs },
+      });
+      syncLocalAudio();
+      return;
+    } catch {
+      // 重解析也失败，落到下面的普通报错提示
+    }
+  }
   toast("本机播放加载音频失败，可能是音源链接失效", "error");
 });
 
@@ -213,6 +237,15 @@ export function logout() {
   store.user = null;
   go("login");
 }
+
+// token 过期（任意 API 返回 401）→ 全局跳登录页，而不是留在原页装死。
+window.addEventListener("hmusic:unauthorized", () => {
+  if (!store.authenticated) return;
+  store.authenticated = false;
+  store.user = null;
+  toast("登录已失效，请重新登录", "error");
+  go("login");
+});
 
 // ===== 极简哈希路由 =====
 const routes = {

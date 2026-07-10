@@ -22,19 +22,62 @@ import {
   syncQueuePlaybackTrack,
 } from "../queue/queue.service.js";
 import { resolveTrack } from "../search/search.service.js";
+import { getLocalAudioUrl } from "../downloads/downloads.service.js";
+import { kvGet, kvSet } from "../../db/kv.js";
 
-let playbackState: HMusicPlaybackState = {
-  sessionId: "default",
-  state: "idle",
-  positionMs: 0,
-  durationMs: 0,
-  volume: 0,
-  playMode: "list_loop",
-  queueIndex: -1,
-  queueLength: 0,
-  seekEnabled: false,
-  updatedAt: Date.now(),
-};
+// 播放状态持久化：重启后恢复"正在放什么"（曲目/封面/进度/音量/模式），
+// 状态恢复为 paused、streamUrl 置空——用户按播放时走 resume 的 TTL 重解析，
+// 拿到新鲜直链无缝续播。没有这层，重启后播放页/侧栏一片空白（封面丢失的根因）。
+const PLAYBACK_KV_KEY = "playback.snapshot";
+
+let playbackState: HMusicPlaybackState = restorePlaybackState();
+
+function restorePlaybackState(): HMusicPlaybackState {
+  const fallback: HMusicPlaybackState = {
+    sessionId: "default",
+    state: "idle",
+    positionMs: 0,
+    durationMs: 0,
+    volume: 0,
+    playMode: "list_loop",
+    queueIndex: -1,
+    queueLength: 0,
+    seekEnabled: false,
+    updatedAt: Date.now(),
+  };
+  try {
+    const saved = kvGet<Partial<HMusicPlaybackState>>(PLAYBACK_KV_KEY);
+    if (saved?.track) {
+      return {
+        ...fallback,
+        ...saved,
+        sessionId: "default",
+        state: saved.state === "idle" ? "idle" : "paused",
+        streamUrl: undefined,
+        updatedAt: Date.now(),
+      };
+    }
+  } catch {
+    // 快照损坏就从零开始
+  }
+  return fallback;
+}
+
+function persistPlaybackState(): void {
+  try {
+    // streamUrl 是易逝的解析产物，不入快照（恢复时必须重解析）。
+    const snapshot: Partial<HMusicPlaybackState> = { ...playbackState };
+    delete snapshot.streamUrl;
+    kvSet(PLAYBACK_KV_KEY, snapshot);
+  } catch {
+    // 尽力而为
+  }
+}
+
+// 最近一次真实解析直链的时间。各平台 CDN 直链带时效（QQ vkey 等约 1 小时级），
+// 暂停放久了再 resume，旧链接已 403——超过阈值就不发 resume 指令，改为原曲重解析续播。
+const RESOLVE_TTL_MS = 20 * 60 * 1000;
+let lastResolvedAt = 0;
 
 export async function getPlaybackState(): Promise<HMusicPlaybackState> {
   await refreshPlaybackStateFromDevice();
@@ -50,6 +93,7 @@ export async function updatePlaybackMode(
     updatedAt: Date.now(),
   };
   await setQueuePlayMode(playMode);
+  persistPlaybackState();
   return playbackState;
 }
 
@@ -94,6 +138,19 @@ export async function playTrack(
     );
   }
 
+  // 已下载到本地的歌优先走本地文件：零解析耗时、彻底免疫直链过期。
+  const localUrl = getLocalAudioUrl(input.track);
+  if (localUrl) {
+    return playUrl({
+      url: localUrl,
+      track: input.track,
+      deviceId: input.deviceId,
+      durationMs: input.durationMs ?? input.track.durationMs,
+      positionMs: input.positionMs,
+      queueIndex: input.queueIndex,
+    });
+  }
+
   const resolved = await resolveTrack({
     track: input.track,
     quality: input.quality,
@@ -114,6 +171,7 @@ export async function playUrl(
 ): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(input.deviceId);
   const playbackUrl = createAudioProxyUrl(input.url);
+  lastResolvedAt = Date.now();
   const isLocal = target.id === LOCAL_DEVICE_ID;
   // 本机播放：不发小米指令，服务端只记账，音频由浏览器 <audio> 拉 streamUrl。
   if (!isLocal) {
@@ -156,6 +214,7 @@ export async function playUrl(
       // 历史写入失败可忽略
     }
   }
+  persistPlaybackState();
   return playbackState;
 }
 
@@ -171,11 +230,35 @@ export async function pausePlayback(): Promise<HMusicPlaybackState> {
     state: "paused",
     updatedAt: Date.now(),
   };
+  persistPlaybackState();
   return playbackState;
 }
 
 export async function resumePlayback(): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(playbackState.deviceId);
+
+  // 直链过期防护：暂停太久后 resume，旧 URL 大概率已失效（CDN 时效签名）。
+  // 有曲目且距上次解析超过 TTL → 原曲重新解析播放，并 seek 回暂停位置。
+  const stale = Date.now() - lastResolvedAt > RESOLVE_TTL_MS;
+  if (playbackState.track && stale) {
+    const resumeAt = playbackState.positionMs;
+    const state = await playTrack({
+      track: playbackState.track,
+      deviceId: target.id,
+      positionMs: resumeAt,
+      queueIndex: playbackState.queueIndex >= 0 ? playbackState.queueIndex : undefined,
+    });
+    // 音箱从 0 开播，支持 seek 才拉回原进度（本机播放由前端按 positionMs 对位）。
+    if (target.id !== LOCAL_DEVICE_ID && resumeAt > 3000 && state.seekEnabled) {
+      try {
+        return await seekPlayback(resumeAt);
+      } catch {
+        return state; // seek 失败不影响续播本身
+      }
+    }
+    return state;
+  }
+
   if (target.id !== LOCAL_DEVICE_ID) {
     await sendPlayerOperation(target.id, "play");
   }
@@ -186,6 +269,7 @@ export async function resumePlayback(): Promise<HMusicPlaybackState> {
     state: "playing",
     updatedAt: Date.now(),
   };
+  persistPlaybackState();
   return playbackState;
 }
 
@@ -204,6 +288,7 @@ export async function stopPlayback(): Promise<HMusicPlaybackState> {
     positionMs: 0,
     updatedAt: Date.now(),
   };
+  persistPlaybackState();
   return playbackState;
 }
 
@@ -351,6 +436,7 @@ export async function seekPlayback(
     positionMs,
     updatedAt: Date.now(),
   };
+  persistPlaybackState();
   return playbackState;
 }
 
@@ -372,6 +458,7 @@ export async function setPlaybackVolume(
     volume: normalizedVolume,
     updatedAt: Date.now(),
   };
+  persistPlaybackState();
   return playbackState;
 }
 
@@ -402,6 +489,7 @@ export async function reportLocalPlayback(input: {
           streamUrl: undefined,
           updatedAt: Date.now(),
         };
+        persistPlaybackState();
         return playbackState;
       }
       throw error;
@@ -419,6 +507,7 @@ export async function reportLocalPlayback(input: {
       : {}),
     updatedAt: Date.now(),
   };
+  persistPlaybackState();
   return playbackState;
 }
 
@@ -568,6 +657,10 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// 音箱不会主动上报"播完了"——只能在状态轮询里做启发式：
+// 上次轮询位置接近曲末 + 这次设备转 idle → 视为自然播完，推进队列连播。
+let lastDevicePositionMs = 0;
+
 async function refreshPlaybackStateFromDevice(): Promise<void> {
   try {
     const target = await resolveTargetDevice(playbackState.deviceId);
@@ -583,6 +676,12 @@ async function refreshPlaybackStateFromDevice(): Promise<void> {
     const status = parseDevicePlaybackStatus(response);
     if (!status) return;
 
+    const wasPlaying = playbackState.state === "playing";
+    const prevPositionMs = lastDevicePositionMs;
+    if (typeof status.positionMs === "number") {
+      lastDevicePositionMs = status.positionMs;
+    }
+
     playbackState = {
       ...playbackState,
       deviceId: target.id,
@@ -596,6 +695,25 @@ async function refreshPlaybackStateFromDevice(): Promise<void> {
       seekEnabled: target.capabilities.supportsSeek,
       updatedAt: Date.now(),
     };
+
+    // 自动连播：播放中 → idle，且上次位置在曲末 15s 内（轮询间隔最长约 10s）。
+    // 手动 stop 时位置一般远离曲末，不会误触发；队列尽头由 nextPlayback 抛错收尾。
+    const duration = playbackState.durationMs;
+    if (
+      wasPlaying &&
+      status.state === "idle" &&
+      duration > 0 &&
+      prevPositionMs >= duration - 15000
+    ) {
+      const queue = await getQueue();
+      if (queue.items.length > 0) {
+        try {
+          await nextPlayback();
+        } catch {
+          // 队列尽头（sequence/single_once）等，保持 idle 即可
+        }
+      }
+    }
   } catch {
     // Device status is best-effort. Keep the optimistic in-memory state.
   }
@@ -723,5 +841,6 @@ function markLoading(
     state: "loading",
     updatedAt: Date.now(),
   };
+  persistPlaybackState();
   return playbackState;
 }
