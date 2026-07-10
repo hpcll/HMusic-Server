@@ -4,14 +4,39 @@ import type {
   HMusicTrack,
 } from "../../shared/contracts.js";
 import { AppError } from "../../shared/errors.js";
+import { kvGet, kvSet } from "../../db/kv.js";
 
-let queue: HMusicQueue = {
-  sessionId: "default",
-  items: [],
-  currentIndex: -1,
-  playMode: "list_loop",
-  updatedAt: Date.now(),
-};
+// 队列持久化：每次变更落库，服务重启后恢复（否则重启即丢整个队列）。
+const QUEUE_KV_KEY = "queue.snapshot";
+
+let queue: HMusicQueue = restoreQueue();
+
+function restoreQueue(): HMusicQueue {
+  const fallback: HMusicQueue = {
+    sessionId: "default",
+    items: [],
+    currentIndex: -1,
+    playMode: "list_loop",
+    updatedAt: Date.now(),
+  };
+  try {
+    const saved = kvGet<HMusicQueue>(QUEUE_KV_KEY);
+    if (saved && Array.isArray(saved.items)) {
+      return { ...fallback, ...saved, updatedAt: Date.now() };
+    }
+  } catch {
+    // 快照损坏就当没有，从空队列开始
+  }
+  return fallback;
+}
+
+function persistQueue(): void {
+  try {
+    kvSet(QUEUE_KV_KEY, queue);
+  } catch {
+    // 持久化尽力而为，不阻断播放操作
+  }
+}
 
 export async function getQueue(): Promise<HMusicQueue> {
   return queue;
@@ -34,6 +59,7 @@ export async function replaceQueue(input: {
     playMode: input.playMode ?? queue.playMode,
     updatedAt: Date.now(),
   };
+  persistQueue();
   return queue;
 }
 
@@ -44,6 +70,7 @@ export async function addQueueTrack(track: HMusicTrack): Promise<HMusicQueue> {
     currentIndex: queue.currentIndex < 0 ? 0 : queue.currentIndex,
     updatedAt: Date.now(),
   };
+  persistQueue();
   return queue;
 }
 
@@ -55,6 +82,7 @@ export async function setCurrentQueueIndex(
     currentIndex: normalizeQueueIndex(index, queue.items.length),
     updatedAt: Date.now(),
   };
+  persistQueue();
   return queue;
 }
 
@@ -66,6 +94,7 @@ export async function setQueuePlayMode(
     playMode,
     updatedAt: Date.now(),
   };
+  persistQueue();
   return queue;
 }
 
@@ -90,6 +119,7 @@ export function syncQueuePlaybackTrack(
       currentIndex: indexToSync,
       updatedAt: Date.now(),
     };
+    persistQueue();
     return queue;
   }
 
@@ -109,6 +139,7 @@ export function syncQueuePlaybackTrack(
       currentIndex: existingIndex,
       updatedAt: Date.now(),
     };
+    persistQueue();
     return queue;
   }
 
@@ -118,6 +149,7 @@ export function syncQueuePlaybackTrack(
     currentIndex: queue.items.length,
     updatedAt: Date.now(),
   };
+  persistQueue();
   return queue;
 }
 
@@ -128,6 +160,7 @@ export async function clearQueue(): Promise<HMusicQueue> {
     currentIndex: -1,
     updatedAt: Date.now(),
   };
+  persistQueue();
   return queue;
 }
 
