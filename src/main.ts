@@ -3,6 +3,16 @@ import { env } from "./config/env.js";
 
 const app = await buildApp();
 
+// 进程级兜底：LX 插件是第三方脚本，其后台请求（如订阅源 checkUpdate）超时产生的
+// 未处理 rejection 会按 Node 默认行为击穿整个进程——家庭音乐服务器的存活优先，
+// 这类错误记日志继续跑，不允许一次网络抖动杀死全部服务。
+process.on("unhandledRejection", (reason) => {
+  app.log.error({ err: reason }, "未处理的 Promise rejection（已拦截，进程继续运行）");
+});
+process.on("uncaughtException", (error) => {
+  app.log.error({ err: error }, "未捕获异常（已拦截，进程继续运行）");
+});
+
 try {
   await app.listen({
     host: env.host,

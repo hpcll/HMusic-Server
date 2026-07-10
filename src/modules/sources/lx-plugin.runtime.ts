@@ -261,6 +261,10 @@ function lxRequest(
   callback?: (err: Error | null, resp?: LxResponse) => void,
 ): Promise<LxResponse> | undefined {
   const promise = performLxRequest(url, options);
+  // 插件脚本可能拿到 Promise 后既不 await 也不 catch（后台 checkUpdate 常见），
+  // 网络超时的 rejection 会击穿进程——挂旁路 catch 标记"已处理"；
+  // 真正的消费方（callback / 返回的同一个 Promise）仍能正常收到错误。
+  promise.catch(() => {});
   if (typeof callback === "function") {
     promise.then(
       (resp) => callback(null, resp),
