@@ -119,34 +119,76 @@ export const PlayerView = {
       return active;
     });
 
-    // 当前行的行内染色进度（0-100）。不用 CSS transition（换行会回扫、行末染不满），
-    // 改由 100ms 定时器直驱：本机播放读 <audio> 实时进度，精确且行末必满格。
-    const stripFill = ref(0);
-    let stripTimer = 0;
+    // 染色进度：rAF 每帧直写 DOM（不经 Vue 响应式）——100ms 定时器只有 10fps，
+    // 肉眼可见一卡一卡。本机播放每帧读 <audio> 实时进度；音箱播放用
+    // 「最近已知进度 + 距上次校准的流逝时间」插值，同样逐帧丝滑。
+    const stripTextEl = ref(null);
+    let stripRaf = 0;
+    let stripLineIdx = -1;
+    let posStampAt = 0;
 
-    function updateStripFill() {
+    function setDisplayPos(v) {
+      displayPos.value = v;
+      posStampAt = performance.now();
+    }
+
+    // 本机播放的平滑时钟：<audio>.currentTime 在部分内核随音频缓冲块每 100-250ms
+    // 才更新一格，逐帧直读染色仍是"一次跳好几个字"。以「锚点 + 墙钟流逝」为主钟
+    // 保证每帧连续，与真实采样漂移超过 300ms（seek/换曲/卡顿）才硬对齐。
+    let localAnchorMs = 0;
+    let localAnchorAt = 0;
+
+    function smoothLocalPos() {
+      const raw = localPositionMs();
+      const now = performance.now();
+      if (store.playback?.state !== "playing") {
+        localAnchorMs = raw;
+        localAnchorAt = now;
+        return raw;
+      }
+      const predicted = localAnchorMs + (now - localAnchorAt);
+      if (Math.abs(raw - predicted) > 300) {
+        localAnchorMs = raw;
+        localAnchorAt = now;
+        return raw;
+      }
+      return predicted;
+    }
+
+    function livePos() {
+      if (isLocal()) return smoothLocalPos();
+      const playing = store.playback?.state === "playing" && !dragging.value;
+      return displayPos.value + (playing ? performance.now() - posStampAt : 0);
+    }
+
+    function stripFrame() {
+      stripRaf = requestAnimationFrame(stripFrame);
       if (!isNarrow.value) return;
       const lines = lyricLines.value;
-      if (lines.length === 0) {
-        stripFill.value = 0;
-        return;
-      }
-      const pos = isLocal() && !dragging.value ? localPositionMs() : displayPos.value;
-      // 本机播放顺带把展示进度提到 100ms 精度（进度条/歌词行同步都更跟手）。
-      if (isLocal() && !dragging.value) displayPos.value = pos;
+      const el = stripTextEl.value;
+      if (!el || lines.length === 0) return;
+      let pos = livePos();
+      const durMax = totalMs();
+      if (durMax > 0) pos = Math.min(pos, durMax);
       let i = -1;
       for (let k = 0; k < lines.length; k++) {
         if (lines[k].timeMs <= pos) i = k;
         else break;
       }
       if (i < 0) {
-        stripFill.value = 0;
+        el.style.setProperty("--fill", "0%");
         return;
       }
       const start = lines[i].timeMs;
       const end = i + 1 < lines.length ? lines[i + 1].timeMs : (totalMs() || start + 5000);
-      const span = Math.max(1, end - start);
-      stripFill.value = Math.min(100, Math.max(0, ((pos - start) / span) * 100));
+      const fill = Math.min(100, Math.max(0, ((pos - start) / Math.max(1, end - start)) * 100));
+      el.style.setProperty("--fill", `${fill.toFixed(2)}%`);
+      // 响应式（歌词条文本/进度条）节流更新：换行立即同步，其余 250ms 一次——
+      // 染色的每帧丝滑靠上面的直写，不需要每帧重渲染组件。
+      if (!dragging.value && (i !== stripLineIdx || performance.now() - posStampAt > 250)) {
+        stripLineIdx = i;
+        setDisplayPos(pos);
+      }
     }
 
     // 当前行变化时，把它滚到歌词栏视口中部。
@@ -171,9 +213,7 @@ export const PlayerView = {
       if (!dragging.value) {
         // 本机播放：<audio> 是进度真相源，服务端的 positionMs 是延迟回写的旧值，
         // 用它覆盖会导致进度条每 5 秒回跳一次。
-        displayPos.value = isLocal()
-          ? localPositionMs()
-          : (store.playback?.positionMs ?? 0);
+        setDisplayPos(isLocal() ? localPositionMs() : (store.playback?.positionMs ?? 0));
       }
       if (typeof store.playback?.volume === "number" && !volDragging.value) {
         volume.value = store.playback.volume;
@@ -184,12 +224,15 @@ export const PlayerView = {
       const state = store.playback;
       if (!state || state.state !== "playing" || dragging.value) return;
       if (isLocal()) {
-        displayPos.value = localPositionMs();
+        setDisplayPos(localPositionMs());
         return;
       }
+      // 音箱播放：按「锚点 + 真实流逝时间」推进（livePos），不能盲加 +1000——
+      // rAF 节流分支也会重设锚点，两个推进器各自累加会双倍计速
+      // （症状：歌词染色跑得比歌快，提前染完，再被 5s 服务器校准拽回来重染）。
       const max = state.durationMs || 0;
-      const next = displayPos.value + 1000;
-      displayPos.value = max > 0 ? Math.min(next, max) : next;
+      const pos = livePos();
+      setDisplayPos(max > 0 ? Math.min(pos, max) : pos);
     }
 
     async function control(action) {
@@ -236,13 +279,13 @@ export const PlayerView = {
       loadFavorites();
       syncTimer = setInterval(sync, 5000);
       localTimer = setInterval(localTick, 1000);
-      stripTimer = setInterval(updateStripFill, 100);
+      stripRaf = requestAnimationFrame(stripFrame);
       narrowMq.addEventListener("change", onNarrowChange);
     });
     onUnmounted(() => {
       clearInterval(syncTimer);
       clearInterval(localTimer);
-      clearInterval(stripTimer);
+      cancelAnimationFrame(stripRaf);
       narrowMq.removeEventListener("change", onNarrowChange);
     });
 
@@ -285,7 +328,7 @@ export const PlayerView = {
             title: pb.value.seekEnabled ? "" : "当前设备不支持进度跳转",
             onInput: (e) => {
               dragging.value = true;
-              displayPos.value = Number(e.target.value);
+              setDisplayPos(Number(e.target.value));
             },
             onChange: (e) => {
               dragging.value = false;
@@ -401,8 +444,8 @@ export const PlayerView = {
         onClick: () => go("lyrics"),
       }, [
         h("span", {
+          ref: stripTextEl,
           class: ["np-lyric-strip-text", { karaoke: hasLine }],
-          style: hasLine ? { "--fill": `${stripFill.value.toFixed(1)}%` } : {},
         }, label),
       ]);
     }
