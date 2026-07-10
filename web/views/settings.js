@@ -3,7 +3,7 @@ import { api, setToken } from "/app/api.js";
 import { toast } from "/app/main.js";
 import { Icons } from "/app/icons.js";
 import { MiAccountSection } from "/app/views/settings-mi.js";
-import { SourcesSection, TracksSection } from "/app/views/settings-sources.js";
+import { SourcesSection, TracksSection, DownloadsSection } from "/app/views/settings-sources.js";
 
 // 设置中心。桌面（≥860px）：左菜单常驻 + 右内容区双栏，无需来回跳转；
 // 窄屏：保持「分组菜单 → 子页」两级（移动端设置 App 范式）。
@@ -20,17 +20,19 @@ export const SettingsView = {
     const summary = ref({});
 
     async function loadSummary() {
-      const [mi, devices, plugins, config] = await Promise.all([
+      const [mi, devices, plugins, config, downloads] = await Promise.all([
         api("/mi/status").catch(() => null),
         api("/devices").catch(() => null),
         api("/sources/lx-plugins").catch(() => null),
         api("/config").catch(() => null),
+        api("/downloads").catch(() => null),
       ]);
       const defaultDevice = (devices?.devices || []).find((d) => d.isDefault);
       summary.value = {
         mi: mi?.loggedIn ? `已登录 ${mi.accountMasked || ""}` : "未登录",
         devices: defaultDevice ? defaultDevice.name : `${devices?.devices?.length ?? 0} 台`,
         sources: `${plugins?.plugins?.length ?? 0} 个`,
+        downloads: `${(downloads?.downloads || []).filter((d) => d.status === "done").length} 首`,
         tracks: `${config?.manualTracks?.length ?? 0} 首`,
         config: config ? `${config.defaultQuality} · ${STRATEGY_LABELS[config.searchStrategy] || ""}` : "",
         diag: "",
@@ -137,6 +139,7 @@ const GROUPS = [
     title: "音源与内容",
     items: [
       { key: "sources", icon: Icons.plugin, label: "LX 音源插件" },
+      { key: "downloads", icon: Icons.download, label: "本地下载" },
       { key: "tracks", icon: Icons.file, label: "手工曲目" },
     ],
   },
@@ -507,6 +510,7 @@ const SECTION_COMPONENTS = {
   mi: MiAccountSection,
   devices: DevicesSection,
   sources: SourcesSection,
+  downloads: DownloadsSection,
   tracks: TracksSection,
   config: ConfigSection,
   diag: DiagSection,

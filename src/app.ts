@@ -9,6 +9,7 @@ import { chartsRoutes } from "./modules/charts/charts.routes.js";
 import { compatRoutes } from "./modules/compat/compat.routes.js";
 import { configRoutes } from "./modules/config/config.routes.js";
 import { devicesRoutes } from "./modules/devices/devices.routes.js";
+import { downloadsRoutes } from "./modules/downloads/downloads.routes.js";
 import { lyricsRoutes } from "./modules/lyrics/lyrics.routes.js";
 import { miPublicRoutes } from "./modules/mi/mi-public.routes.js";
 import { miRoutes } from "./modules/mi/mi.routes.js";
@@ -64,6 +65,7 @@ export async function buildApp() {
   await app.register(lyricsRoutes, { prefix: "/api/v1/tracks" });
   await app.register(chartsRoutes, { prefix: "/api/v1/charts" });
   await app.register(statsRoutes, { prefix: "/api/v1/stats" });
+  await app.register(downloadsRoutes, { prefix: "/api/v1/downloads" });
 
   return app;
 }

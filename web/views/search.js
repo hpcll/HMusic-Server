@@ -66,6 +66,25 @@ export const SearchView = {
       }
     }
 
+    // 下载到服务器本地：之后这首歌播放走本地文件，不再受平台直链过期影响。
+    async function download(track) {
+      actingId.value = track.id;
+      try {
+        const result = await api("/downloads", { method: "POST", body: { track } });
+        const status = result.download?.status;
+        toast(
+          status === "done"
+            ? `已在本地：${track.title}`
+            : `开始下载：${track.title}`,
+          "success",
+        );
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        actingId.value = "";
+      }
+    }
+
     // ── 加入歌单 ──
     async function openPicker(track) {
       pickerTrack.value = track;
@@ -210,6 +229,10 @@ export const SearchView = {
                         class: "icon-btn",
                         title: "加入歌单", onClick: () => openPicker(t),
                       }, Icons.playlists()),
+                      h("button", {
+                        class: "icon-btn", disabled: actingId.value === t.id,
+                        title: "下载到服务器", onClick: () => download(t),
+                      }, Icons.download()),
                     ]),
                   ]),
                 ),

@@ -78,6 +78,11 @@ export const Icons = {
     h("path", { d: "M9 4H5.5v16H9" }),
     h("path", { d: "M14 8l4 4-4 4M18 12H9.5" }),
   ]),
+  download: () => icon([
+    h("path", { d: "M12 4.5v10" }),
+    h("path", { d: "M7.5 10.5 12 15l4.5-4.5" }),
+    h("path", { d: "M5 19.5h14" }),
+  ]),
   note: () => icon([
     h("path", { d: "M10 17.2V5.8l8-1.4v11.4" }),
     h("circle", { cx: 7.8, cy: 17.2, r: 2.2 }),

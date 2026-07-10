@@ -1,4 +1,4 @@
-import { ref, onMounted, h } from "vue";
+import { ref, onMounted, onUnmounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { toast } from "/app/main.js";
@@ -327,6 +327,112 @@ function suggestPluginId(name, url) {
     return "lx-plugin";
   }
 }
+
+// 本地下载子页：已下载列表（状态/大小/失败原因）+ 删除；下载进行中每 3s 轮询。
+export const DownloadsSection = {
+  setup() {
+    const items = ref([]);
+    let timer = 0;
+
+    async function load() {
+      try {
+        const result = await api("/downloads");
+        items.value = result.downloads || [];
+        scheduleRefresh();
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    function scheduleRefresh() {
+      clearInterval(timer);
+      const active = items.value.some(
+        (d) => d.status === "pending" || d.status === "downloading",
+      );
+      if (active) timer = setInterval(load, 3000);
+    }
+
+    async function remove(item) {
+      try {
+        await api(`/downloads/${encodeURIComponent(item.id)}`, {
+          method: "DELETE",
+        });
+        await load();
+        toast("已删除本地文件", "success");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    async function retry(item) {
+      try {
+        await api("/downloads", {
+          method: "POST",
+          body: { track: item.track },
+        });
+        await load();
+        toast(`重新下载：${item.title}`, "success");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    onMounted(load);
+    onUnmounted(() => clearInterval(timer));
+
+    const STATUS_LABEL = {
+      pending: "排队中",
+      downloading: "下载中…",
+      done: "已下载",
+      failed: "失败",
+    };
+
+    function sizeLabel(bytes) {
+      if (!bytes) return "";
+      const mb = bytes / 1024 / 1024;
+      return ` · ${mb >= 1 ? mb.toFixed(1) + " MB" : Math.round(bytes / 1024) + " KB"}`;
+    }
+
+    return () =>
+      h("div", { class: "section-body" }, [
+        h("p", { class: "hint" },
+          "下载到服务器本地的歌播放时直接走本地文件——不再依赖平台直链，永不过期。" +
+          "在搜索结果里点下载图标即可加入。"),
+        items.value.length === 0
+          ? h("div", { class: "muted center" }, "还没有下载的音乐")
+          : h("ul", { class: "track-list card" },
+              items.value.map((d) =>
+                h("li", { key: d.id, class: "track-row" }, [
+                  h("div", { class: "track-info" }, [
+                    h("div", { class: "track-title" }, d.title),
+                    h("div", { class: "track-artist" }, [
+                      h("span", {
+                        class: `dot dot-${d.status === "done" ? "playing" : d.status === "failed" ? "error" : "paused"}`,
+                      }),
+                      `${STATUS_LABEL[d.status] || d.status}${sizeLabel(d.byteSize)} · ${d.artist || "未知"}`,
+                      d.status === "failed" && d.error
+                        ? h("span", { class: "muted" }, `（${d.error}）`)
+                        : null,
+                    ]),
+                  ]),
+                  h("div", { class: "track-actions" }, [
+                    d.status === "failed"
+                      ? h("button", {
+                          class: "icon-btn", title: "重试",
+                          onClick: () => retry(d),
+                        }, Icons.refresh())
+                      : null,
+                    h("button", {
+                      class: "icon-btn", title: "删除本地文件",
+                      onClick: () => remove(d),
+                    }, Icons.close()),
+                  ]),
+                ]),
+              ),
+            ),
+      ]);
+  },
+};
 
 // 手工曲目子页：直接可播的音频 URL 列表（存 config.manualTracks）。
 export const TracksSection = {

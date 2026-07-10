@@ -134,6 +134,28 @@ export function ensureSchema(): void {
       ON play_history(played_at);
     CREATE INDEX IF NOT EXISTS play_history_track_key_idx
       ON play_history(track_key);
+
+    CREATE TABLE IF NOT EXISTS downloads (
+      id TEXT PRIMARY KEY,
+      track_key TEXT NOT NULL UNIQUE,
+      source TEXT NOT NULL,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      album TEXT,
+      cover_url TEXT,
+      track_json TEXT NOT NULL,
+      quality TEXT,
+      file_path TEXT NOT NULL,
+      file_ext TEXT NOT NULL,
+      byte_size INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS downloads_status_idx ON downloads(status);
+    CREATE INDEX IF NOT EXISTS downloads_created_at_idx ON downloads(created_at);
 	  `);
 
   try {

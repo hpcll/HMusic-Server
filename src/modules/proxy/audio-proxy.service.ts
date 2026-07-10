@@ -5,10 +5,30 @@ import { AppError } from "../../shared/errors.js";
 const signatureLength = 22;
 
 export function createAudioProxyUrl(targetUrl: string): string {
+  // 自家代理地址（本地已下载文件等）已是终点，二次包装会让服务器自呼自——直通。
+  const base = env.publicBaseUrl.replace(/\/$/, "");
+  if (targetUrl.startsWith(`${base}/api/v1/proxy/`)) {
+    return targetUrl;
+  }
   const url = parseHttpUrl(targetUrl);
   const encoded = Buffer.from(url.toString()).toString("base64url");
   const signature = sign(encoded);
-  return `${env.publicBaseUrl.replace(/\/$/, "")}/api/v1/proxy/audio/${encoded}.${signature}`;
+  return `${base}/api/v1/proxy/audio/${encoded}.${signature}`;
+}
+
+// 本地已下载音频：/proxy/local/<downloadId>.<签名>，与音频代理同一信任模型
+// （无需登录但必须持有效签名——音箱和 <audio> 都带不了 JWT）。
+export function createLocalAudioUrl(downloadId: string): string {
+  const base = env.publicBaseUrl.replace(/\/$/, "");
+  return `${base}/api/v1/proxy/local/${downloadId}.${sign(downloadId)}`;
+}
+
+export function verifyLocalAudioToken(token: string): string {
+  const [id, signature] = token.split(".");
+  if (!id || !signature || !isValidSignature(id, signature)) {
+    throw new AppError("AUDIO_PROXY_TOKEN_INVALID", "本地音频链接无效", 403);
+  }
+  return id;
 }
 
 export function decodeAudioProxyToken(token: string): string {

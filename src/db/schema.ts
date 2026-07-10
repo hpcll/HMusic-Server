@@ -159,3 +159,31 @@ export const playHistory = sqliteTable(
     trackKeyIndex: index("play_history_track_key_idx").on(table.trackKey),
   }),
 );
+
+// 已下载到服务器本地的音乐。file_path 相对 dataDir，播放解析优先命中本地文件，
+// 彻底免疫平台直链过期；cover_url 存原始封面地址（前端展示用）。
+export const downloads = sqliteTable(
+  "downloads",
+  {
+    id: text("id").primaryKey(),
+    trackKey: text("track_key").notNull().unique(), // source:sourceTrackId
+    source: text("source").notNull(),
+    title: text("title").notNull(),
+    artist: text("artist").notNull(),
+    album: text("album"),
+    coverUrl: text("cover_url"),
+    trackJson: text("track_json").notNull(),
+    quality: text("quality"),
+    filePath: text("file_path").notNull(), // 相对 dataDir，如 music/xxx.mp3
+    fileExt: text("file_ext").notNull(),
+    byteSize: integer("byte_size").notNull().default(0),
+    status: text("status").notNull().default("pending"), // pending|downloading|done|failed
+    error: text("error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => ({
+    statusIndex: index("downloads_status_idx").on(table.status),
+    createdAtIndex: index("downloads_created_at_idx").on(table.createdAt),
+  }),
+);

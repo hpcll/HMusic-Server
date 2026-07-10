@@ -1,8 +1,14 @@
+import { createReadStream } from "node:fs";
+import fs from "node:fs/promises";
 import { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AppError } from "../../shared/errors.js";
-import { decodeAudioProxyToken } from "./audio-proxy.service.js";
+import {
+  decodeAudioProxyToken,
+  verifyLocalAudioToken,
+} from "./audio-proxy.service.js";
+import { getDownloadFile } from "../downloads/downloads.service.js";
 
 const tokenParamsSchema = z.object({
   token: z.string().min(1),
@@ -48,5 +54,37 @@ export async function proxyRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return reply.send(Readable.fromWeb(response.body));
+  });
+
+  // 本地已下载音频：直接流本地文件，支持 Range（<audio> 拖进度、音箱断点续拉都靠它）。
+  app.get("/local/:token", async (request, reply) => {
+    const { token } = tokenParamsSchema.parse(request.params);
+    const id = verifyLocalAudioToken(token);
+    const file = getDownloadFile(id);
+    const stat = await fs.stat(file.absPath);
+
+    reply.header("accept-ranges", "bytes");
+    reply.header("content-type", file.mime);
+    reply.header("cache-control", "no-cache");
+
+    const range = request.headers.range;
+    if (range) {
+      const match = /bytes=(\d*)-(\d*)/.exec(range);
+      let start = match?.[1] ? Number.parseInt(match[1], 10) : 0;
+      let end = match?.[2] ? Number.parseInt(match[2], 10) : stat.size - 1;
+      if (!Number.isFinite(start) || start < 0) start = 0;
+      if (!Number.isFinite(end) || end >= stat.size) end = stat.size - 1;
+      if (start >= stat.size || start > end) {
+        reply.code(416).header("content-range", `bytes */${stat.size}`);
+        return reply.send();
+      }
+      reply.code(206);
+      reply.header("content-range", `bytes ${start}-${end}/${stat.size}`);
+      reply.header("content-length", end - start + 1);
+      return reply.send(createReadStream(file.absPath, { start, end }));
+    }
+
+    reply.header("content-length", stat.size);
+    return reply.send(createReadStream(file.absPath));
   });
 }
