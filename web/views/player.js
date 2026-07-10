@@ -2,9 +2,10 @@ import { ref, computed, watch, onMounted, onUnmounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import {
-  store, refreshPlayback, toast,
+  store, refreshPlayback, toast, go,
   localSeek, localPlay, localPause, localPositionMs, localDurationMs, LOCAL_DEVICE_ID,
 } from "/app/main.js";
+import { lyric, lyricLoading, ensureLyric } from "/app/lyric-state.js";
 
 const FAV_PLAYLIST_NAME = "我喜欢的音乐";
 
@@ -25,11 +26,18 @@ export const PlayerView = {
     let syncTimer = 0;
     let localTimer = 0;
 
-    // ── 歌词状态 ──
-    const lyric = ref(null); // HMusicLyric | null
-    const lyricLoading = ref(false);
-    let lyricForKey = ""; // 已加载歌词对应的曲目 key，防重复拉取
+    // ── 歌词状态（共享自 lyric-state.js，与歌词页同一份缓存） ──
     const lyricListEl = ref(null);
+
+    // ── 窄屏（≤1023px，np-grid 单列）歌词模式 ──
+    // 桌面双栏的歌词栏塌缩到手机上会把页面撑出一屏多（歌词孤零零飘在下面）。
+    // 窄屏改为：内联只留「当前句」歌词条，点条/点封面进独立歌词页（#/lyrics）。
+    const narrowMq = window.matchMedia("(max-width: 1023px)");
+    const isNarrow = ref(narrowMq.matches);
+    const hoverable = window.matchMedia("(hover: hover)").matches;
+    function onNarrowChange(e) {
+      isNarrow.value = e.matches;
+    }
 
     const pb = computed(() => store.playback || {});
     const track = computed(() => pb.value.track);
@@ -111,6 +119,36 @@ export const PlayerView = {
       return active;
     });
 
+    // 当前行的行内染色进度（0-100）。不用 CSS transition（换行会回扫、行末染不满），
+    // 改由 100ms 定时器直驱：本机播放读 <audio> 实时进度，精确且行末必满格。
+    const stripFill = ref(0);
+    let stripTimer = 0;
+
+    function updateStripFill() {
+      if (!isNarrow.value) return;
+      const lines = lyricLines.value;
+      if (lines.length === 0) {
+        stripFill.value = 0;
+        return;
+      }
+      const pos = isLocal() && !dragging.value ? localPositionMs() : displayPos.value;
+      // 本机播放顺带把展示进度提到 100ms 精度（进度条/歌词行同步都更跟手）。
+      if (isLocal() && !dragging.value) displayPos.value = pos;
+      let i = -1;
+      for (let k = 0; k < lines.length; k++) {
+        if (lines[k].timeMs <= pos) i = k;
+        else break;
+      }
+      if (i < 0) {
+        stripFill.value = 0;
+        return;
+      }
+      const start = lines[i].timeMs;
+      const end = i + 1 < lines.length ? lines[i + 1].timeMs : (totalMs() || start + 5000);
+      const span = Math.max(1, end - start);
+      stripFill.value = Math.min(100, Math.max(0, ((pos - start) / span) * 100));
+    }
+
     // 当前行变化时，把它滚到歌词栏视口中部。
     watch(activeLine, (index) => {
       if (index < 0 || !lyricListEl.value) return;
@@ -118,28 +156,8 @@ export const PlayerView = {
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     });
 
-    async function loadLyric() {
-      const t = track.value;
-      if (!t) {
-        lyric.value = null;
-        lyricForKey = "";
-        return;
-      }
-      const key = `${t.source}:${t.sourceTrackId}`;
-      if (key === lyricForKey) return;
-      lyricForKey = key;
-      lyric.value = null;
-      lyricLoading.value = true;
-      try {
-        lyric.value = await api("/tracks/lyrics", {
-          method: "POST",
-          body: { track: t },
-        });
-      } catch {
-        lyric.value = null; // 无歌词不算错误
-      } finally {
-        lyricLoading.value = false;
-      }
+    function loadLyric() {
+      ensureLyric(track.value);
     }
 
     watch(track, loadLyric);
@@ -218,16 +236,26 @@ export const PlayerView = {
       loadFavorites();
       syncTimer = setInterval(sync, 5000);
       localTimer = setInterval(localTick, 1000);
+      stripTimer = setInterval(updateStripFill, 100);
+      narrowMq.addEventListener("change", onNarrowChange);
     });
     onUnmounted(() => {
       clearInterval(syncTimer);
       clearInterval(localTimer);
+      clearInterval(stripTimer);
+      narrowMq.removeEventListener("change", onNarrowChange);
     });
 
     function renderStage() {
       return h("section", { class: "np-stage" }, [
-        h("div", { class: "np-cover", style: coverStyle(track.value) },
-          track.value?.coverUrl ? [] : Icons.note()),
+        h("div", {
+          class: ["np-cover", { tappable: isNarrow.value && !!track.value }],
+          style: coverStyle(track.value),
+          // 窄屏点封面 = 进歌词页（大拇指友好的大目标，移动播放器惯例）
+          onClick: () => {
+            if (isNarrow.value && track.value) go("lyrics");
+          },
+        }, track.value?.coverUrl ? [] : Icons.note()),
         h("div", { class: "np-head" }, [
           h("div", { class: "np-title" }, track.value?.title || "暂无播放"),
           h("div", { class: "np-artist" },
@@ -240,6 +268,9 @@ export const PlayerView = {
             pb.value.deviceName ? ` · ${pb.value.deviceName}` : "",
           ]),
         ]),
+
+        // 窄屏：染色歌词条放在信息与进度之间（QQ 音乐同构布局）
+        isNarrow.value ? renderLyricStrip() : null,
 
         // 进度条（本机播放时长以 <audio> 为准兜底）
         h("div", { class: "progress-row" }, [
@@ -280,10 +311,14 @@ export const PlayerView = {
           ctrlBtn("next", ICON.next(), busy.value, () => control("next")),
           h("div", {
             class: ["volume-wrap", { open: volumeOpen.value }],
-            onMouseenter: () => (volumeOpen.value = true),
-            onMouseleave: () => {
-              if (!volDragging.value) volumeOpen.value = false;
-            },
+            // hover 展开仅限有悬停能力的设备——触屏上 mouseenter 会和 click
+            // 打架（一点即开又即关，表现为"无法调节"），触屏只走点击开关。
+            onMouseenter: hoverable ? () => (volumeOpen.value = true) : undefined,
+            onMouseleave: hoverable
+              ? () => {
+                  if (!volDragging.value) volumeOpen.value = false;
+                }
+              : undefined,
           }, [
             h("button", {
               class: "ctrl-btn",
@@ -346,9 +381,38 @@ export const PlayerView = {
       ]);
     }
 
+    // 窄屏：当前句染色歌词条（点击进独立歌词页）。
+    // 染色 = 行内进度驱动的左→右渐进填充；歌词本体就是入口，不加多余装饰。
+    function renderLyricStrip() {
+      if (!track.value) return null;
+      const lines = lyricLines.value;
+      const hasLine = activeLine.value >= 0 && lines.length > 0;
+      const label = lyricLoading.value
+        ? "歌词加载中…"
+        : hasLine
+          ? lines[activeLine.value]?.text || "…"
+          : lines.length > 0
+            ? "…"
+            : lyric.value?.lrc
+              ? "查看歌词"
+              : "暂无歌词";
+      return h("button", {
+        class: "np-lyric-strip",
+        onClick: () => go("lyrics"),
+      }, [
+        h("span", {
+          class: ["np-lyric-strip-text", { karaoke: hasLine }],
+          style: hasLine ? { "--fill": `${stripFill.value.toFixed(1)}%` } : {},
+        }, label),
+      ]);
+    }
+
     return () =>
       h("main", { class: "view player-view" }, [
-        h("div", { class: "np-grid" }, [renderStage(), renderLyrics()]),
+        h("div", { class: "np-grid" }, [
+          renderStage(),
+          isNarrow.value ? null : renderLyrics(),
+        ]),
       ]);
   },
 };

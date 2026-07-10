@@ -3,6 +3,7 @@ import { api, getToken, setToken, clearToken } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { LoginView } from "/app/views/login.js";
 import { PlayerView } from "/app/views/player.js";
+import { LyricsView } from "/app/views/lyrics.js";
 import { SearchView } from "/app/views/search.js";
 import { QueueView } from "/app/views/queue.js";
 import { PlaylistsView } from "/app/views/playlists.js";
@@ -216,6 +217,8 @@ export function logout() {
 // ===== 极简哈希路由 =====
 const routes = {
   player: { component: PlayerView, requiresAuth: true, label: "正在播放", icon: Icons.player },
+  // 歌词页：窄屏专用沉浸式路由（无导航壳），从播放页点封面/歌词条进入
+  lyrics: { component: LyricsView, requiresAuth: true, immersive: true },
   search: { component: SearchView, requiresAuth: true, label: "搜索", icon: Icons.search },
   queue: { component: QueueView, requiresAuth: true, label: "队列", icon: Icons.queue },
   playlists: { component: PlaylistsView, requiresAuth: true, label: "歌单", icon: Icons.playlists },
@@ -262,6 +265,14 @@ const App = {
       const route = routes[router.name] || routes.player;
 
       if (!store.authenticated || router.name === "login") {
+        return h("div", { class: "app-shell" }, [
+          h(route.component),
+          toastEl(),
+        ]);
+      }
+
+      // 沉浸式路由（歌词页）：无侧栏/顶栏/底部导航，内容独占全屏。
+      if (route.immersive) {
         return h("div", { class: "app-shell" }, [
           h(route.component),
           toastEl(),

@@ -1,0 +1,13 @@
+{
+  "name": "HMusic",
+  "short_name": "HMusic",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "background_color": "#f7f7f8",
+  "theme_color": "#f7f7f8",
+  "icons": [
+    { "src": "/app/assets/favicon-64.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "/app/assets/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

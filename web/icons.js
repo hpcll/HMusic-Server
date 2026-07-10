@@ -69,6 +69,7 @@ export const Icons = {
   close: () => icon([h("path", { d: "M6 6l12 12M18 6L6 18" })]),
   chevronRight: () => icon([h("path", { d: "M9.5 6 15.5 12l-6 6" })]),
   chevronLeft: () => icon([h("path", { d: "M14.5 6 8.5 12l6 6" })]),
+  chevronDown: () => icon([h("path", { d: "M6 9.5 12 15.5l6-6" })]),
   refresh: () => icon([
     h("path", { d: "M20 12a8 8 0 1 1-2.34-5.66" }),
     h("path", { d: "M20 4v4h-4" }),
