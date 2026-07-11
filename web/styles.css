@@ -158,6 +158,9 @@ button { font-family: inherit; }
   align-items: center;
   gap: 10px;
   width: 100%;
+  /* grid 子项默认 min-width:auto——长歌名（nowrap）会把卡片撑出侧栏内边距、
+     贴到分割线且省略号失效。锁 0 让 ellipsis 链路生效。 */
+  min-width: 0;
   border: 1px solid var(--line);
   background: var(--panel);
   border-radius: var(--radius);
