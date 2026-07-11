@@ -1025,6 +1025,7 @@ async function doXiaomiUbusRequest(input: {
     "https://api2.mina.mi.com/remote/ubus",
   ];
   let lastStatusCode: number | undefined;
+  let lastMiMessage: string | undefined;
 
   for (const endpoint of endpoints) {
     const response = await fetch(endpoint, {
@@ -1043,12 +1044,25 @@ async function doXiaomiUbusRequest(input: {
     if (data.code === 0) {
       return data;
     }
+    if (data.message) lastMiMessage = String(data.message);
   }
 
-  throw new AppError("MI_UBUS_REQUEST_FAILED", "小米设备控制请求失败", 502, {
-    method: input.method,
-    statusCode: lastStatusCode,
-  });
+  // 错误必须可行动：401 是会话过期（最常见），data.message 是小米侧真实原因
+  // （如设备离线）。笼统的"请求失败"会让用户在"状态明明正常"里打转。
+  const hint =
+    lastStatusCode === 401
+      ? "小米登录已过期，请到 设置 → 小米账号 重新登录"
+      : lastMiMessage || "设备可能离线或小米服务不可达";
+  throw new AppError(
+    "MI_UBUS_REQUEST_FAILED",
+    `小米设备控制请求失败：${hint}`,
+    502,
+    {
+      method: input.method,
+      statusCode: lastStatusCode,
+      miMessage: lastMiMessage,
+    },
+  );
 }
 
 export function createXiaomiDeviceId(): string {

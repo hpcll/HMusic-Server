@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../../shared/auth.js";
-import { refreshMiDevices } from "../mi/mi.service.js";
+import { probeMiDeviceLink, hasStoredMiSession, refreshMiDevices } from "../mi/mi.service.js";
+import { retargetPlayback } from "../playback/playback.service.js";
 import {
+  LOCAL_DEVICE_ID,
   listDevices,
   probeDevice,
   selectDevice,
@@ -53,11 +55,20 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/:id/select", async (request) => {
     const params = paramsSchema.parse(request.params);
-    return selectDevice(params.id);
+    const result = await selectDevice(params.id);
+    // 默认设备即播放目标：否则切到本机后 resume 仍指向旧音箱。
+    const playback = await retargetPlayback(params.id);
+    return { ...result, playback };
   });
 
   app.post("/:id/probe", async (request) => {
     const params = paramsSchema.parse(request.params);
+    // 真探测：音箱先发一次真实 ubus 状态查询（会话过期/离线当场暴露），
+    // 通过了才返回能力表。本机虚拟设备无链路可测；未登录小米时无从真探测，
+    // 二者都降级为直接返回能力表（不谎报成功，也不误报失败）。
+    if (params.id !== LOCAL_DEVICE_ID && (await hasStoredMiSession())) {
+      await probeMiDeviceLink(params.id);
+    }
     return probeDevice(params.id);
   });
 }

@@ -16,6 +16,7 @@ import {
   fetchXiaomiDevices,
   loginXiaomiAccount,
   sendXiaomiIdentitySms,
+  sendXiaomiUbusRequest,
   startXiaomiIdentityChallenge,
   startXiaomiQrLogin,
   waitXiaomiQrLogin,
@@ -574,6 +575,18 @@ export async function logoutMiAccount(): Promise<MiStatus> {
   return getMiStatus();
 }
 
+// 是否有可用的已登录会话（不抛错版，供"要不要真探测"这类分支判断）。
+export async function hasStoredMiSession(): Promise<boolean> {
+  const account = (
+    await db
+      .select()
+      .from(miAccounts)
+      .where(eq(miAccounts.id, accountId))
+      .limit(1)
+  )[0];
+  return Boolean(account && account.isLoggedIn === 1);
+}
+
 export async function getStoredMiSession(): Promise<XiaomiSession> {
   const account = (
     await db
@@ -585,7 +598,6 @@ export async function getStoredMiSession(): Promise<XiaomiSession> {
   if (!account || account.isLoggedIn !== 1) {
     throw new AppError("MI_ACCOUNT_NOT_LOGGED_IN", "小米账号尚未登录", 401);
   }
-
   const serviceToken = decryptSecret(account.serviceTokenEnc);
   const userId = decryptSecret(account.userIdEnc);
   if (!serviceToken || !userId || !account.deviceId) {
@@ -617,6 +629,18 @@ export async function refreshMiDevices(): Promise<{ deviceCount: number }> {
   }
   await saveDevices(devices);
   return { deviceCount: devices.length };
+}
+
+// 真·链路探测：向设备发一次真实的状态查询 ubus 请求，会话过期/设备离线
+// 当场暴露——之前"探测"只回数据库里的能力表，永远显示正常，播放才翻车。
+export async function probeMiDeviceLink(deviceId: string): Promise<void> {
+  const session = await getStoredMiSession();
+  await sendXiaomiUbusRequest({
+    session,
+    deviceId,
+    method: "player_get_play_status",
+    message: { media: "app_ios" },
+  });
 }
 
 async function saveLoginAttempt(
