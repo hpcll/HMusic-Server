@@ -1241,12 +1241,34 @@ describe("api contract", () => {
         payload: {
           track: lxSearch.json().tracks[0],
           quality: "source",
+          queueIndex: 1,
         },
       });
       expect(playDuplicateTrack.statusCode).toBe(200);
       expect(playDuplicateTrack.json()).toEqual(
         expect.objectContaining({
           queueIndex: 1,
+          queueLength: 2,
+        }),
+      );
+
+      // 队列含重复歌曲时，queueIndex 精确定位第几项（回归 playSchema 曾漏声明
+      // queueIndex + strict 拒收，导致队列点重复歌 400 的 bug）。传 index 0
+      // 应落在第 0 项而不是被同名的第 1 项抢占。
+      const playDuplicateFirst = await app.inject({
+        method: "POST",
+        url: "/api/v1/playback/play",
+        headers,
+        payload: {
+          track: lxSearch.json().tracks[0],
+          quality: "source",
+          queueIndex: 0,
+        },
+      });
+      expect(playDuplicateFirst.statusCode).toBe(200);
+      expect(playDuplicateFirst.json()).toEqual(
+        expect.objectContaining({
+          queueIndex: 0,
           queueLength: 2,
         }),
       );
@@ -1613,6 +1635,13 @@ describe("api contract", () => {
       });
       expect(selectedDevice.statusCode).toBe(200);
       expect(selectedDevice.json().selectedDeviceId).toBe("mock-speaker");
+      // 选默认设备即切换播放目标：有曲目时转为新设备上的暂停态（待重解析续播）。
+      expect(selectedDevice.json().playback).toEqual(
+        expect.objectContaining({
+          deviceId: "mock-speaker",
+          state: "paused",
+        }),
+      );
 
       const probedDevice = await app.inject({
         method: "POST",
@@ -1628,7 +1657,9 @@ describe("api contract", () => {
         headers,
       });
       expect(playback.statusCode).toBe(200);
-      expect(playback.json().state).toBe("playing");
+      // 切设备后为暂停态；设备状态回读（mock ubus 返回 status:1）可能刷成 playing，
+      // 两者都算正常，这里只断言不是初始 idle。
+      expect(["playing", "paused"]).toContain(playback.json().state);
 
       const queue = await app.inject({
         method: "GET",
