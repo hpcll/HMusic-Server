@@ -2,6 +2,12 @@ import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
+import {
+  openDownloadPicker,
+  renderDownloadPicker,
+  refreshDownloadedKeys,
+  downloadedBadge,
+} from "/app/download.js";
 
 // 榜单页：卡片墙（按来源分组，卡片直接亮前 3 首）→ 点卡片进详情列表。
 // 网易云/QQ/家庭榜的条目带 track，点了直接回放；
@@ -30,6 +36,7 @@ export const ChartsView = {
         toast(error.message, "error");
         return;
       }
+      refreshDownloadedKeys();
       // 并发预取各榜前 3 首做卡片预览，顺带焐热后端 6h 缓存（进详情秒开）。
       for (const c of charts.value) {
         api(`/charts/${c.id}`)
@@ -104,6 +111,20 @@ export const ChartsView = {
       }
     }
 
+    // 下载榜单条目：带 track 直接进音质弹窗；Apple 榜先搜索匹配出真实曲目再下。
+    async function downloadEntry(entry) {
+      if (actingRank.value) return;
+      actingRank.value = entry.rank;
+      try {
+        const track = await resolveEntry(entry);
+        openDownloadPicker(track);
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        actingRank.value = 0;
+      }
+    }
+
     // 整榜播放：50 首一把灌进队列开播（仅条目带 track 的榜显示按钮）。
     async function playAll() {
       if (actingRank.value) return;
@@ -122,7 +143,11 @@ export const ChartsView = {
 
     onMounted(loadCharts);
 
-    return () => (active.value ? renderDetail() : renderWall());
+    return () =>
+      h("div", null, [
+        active.value ? renderDetail() : renderWall(),
+        renderDownloadPicker(),
+      ]);
 
     // ── 卡片墙：按来源分组的榜单入口，卡片直接亮前 3 首 ──
     function renderWall() {
@@ -232,7 +257,10 @@ export const ChartsView = {
             : {},
         }, entry.coverUrl ? [] : "♪"),
         h("div", { class: "track-info" }, [
-          h("div", { class: "track-title" }, entry.title),
+          h("div", { class: "track-title" }, [
+            entry.title,
+            entry.track ? downloadedBadge(entry.track) : null,
+          ]),
           h("div", { class: "track-artist" }, [
             entry.artist,
             entry.playCount
@@ -253,6 +281,12 @@ export const ChartsView = {
             title: "加入队列",
             onClick: () => enqueue(entry),
           }, Icons.plus()),
+          h("button", {
+            class: "icon-btn",
+            disabled: actingRank.value === entry.rank,
+            title: "下载到服务器",
+            onClick: () => downloadEntry(entry),
+          }, Icons.download()),
         ]),
       ]);
     }

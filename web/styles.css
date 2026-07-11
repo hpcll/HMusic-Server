@@ -1228,6 +1228,41 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 
 /* 加入歌单选择器 */
 .picker-song { margin-bottom: 12px; font-size: 13px; }
+
+/* 下载音质选择（download.js 弹窗） */
+.quality-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.quality-item {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  transition: border-color 0.12s ease;
+}
+.quality-item:hover { border-color: var(--muted); }
+.quality-item.active {
+  border-color: var(--text-strong);
+  background: var(--panel-2);
+}
+.quality-label { font-weight: 600; color: var(--text-strong); }
+
+/* 曲目行「已下载」角标：贴在标题后的小下载勾 */
+.dl-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--muted);
+  vertical-align: -2px;
+}
+.dl-badge svg { width: 12px; height: 12px; }
 .picker-create { display: flex; gap: 8px; margin-bottom: 14px; }
 .picker-create .modal-input { flex: 1; }
 .picker-create .primary-btn { white-space: nowrap; }

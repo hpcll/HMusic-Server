@@ -55,8 +55,24 @@ function trackKeyOf(track: HMusicTrack): string {
   return `${track.source}:${track.sourceTrackId}`;
 }
 
-function safeFileBase(trackKey: string): string {
-  return trackKey.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80);
+// 人类可读文件名「歌手 - 歌名 [source_id]」：中文保留，只滤文件系统非法字符
+// （/ \\ : * ? " < > | 与控制符），末尾方括号 trackKey 保唯一。Finder/NAS 直接可读。
+function cleanFsSegment(text: string): string {
+  const stripped = Array.from(text || "")
+    .filter((ch) => (ch.codePointAt(0) ?? 0) >= 0x20)
+    .join("");
+  return stripped
+    .replace(/[/\\:*?"<>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fileBaseFor(track: HMusicTrack): string {
+  const artist = cleanFsSegment(track.artist).slice(0, 40);
+  const title = cleanFsSegment(track.title).slice(0, 60) || "未知歌曲";
+  const keyTag = trackKeyOf(track).replace(/[^a-zA-Z0-9_-]+/g, "_");
+  const name = artist ? `${artist} - ${title} [${keyTag}]` : `${title} [${keyTag}]`;
+  return name.slice(0, 150);
 }
 
 function extFromUrl(url: string): string {
@@ -177,7 +193,7 @@ export async function startDownload(
   const placeholderExt = "mp3";
   const filePath = path.join(
     "music",
-    `${safeFileBase(trackKey)}.${placeholderExt}`,
+    `${fileBaseFor(track)}.${placeholderExt}`,
   );
 
   const values = {
@@ -224,7 +240,6 @@ async function runDownload(
   track: HMusicTrack,
   quality: string | undefined,
 ): Promise<void> {
-  const trackKey = trackKeyOf(track);
   let absPath = "";
   try {
     await fs.mkdir(MUSIC_DIR, { recursive: true });
@@ -232,7 +247,7 @@ async function runDownload(
     // 解析出最新直链（本地下载不走音频代理，直接抓源站）。
     const resolved = await resolveTrack({ track, quality });
     const fileExt = extFromUrl(resolved.url);
-    const relPath = path.join("music", `${safeFileBase(trackKey)}.${fileExt}`);
+    const relPath = path.join("music", `${fileBaseFor(track)}.${fileExt}`);
     absPath = path.join(env.dataDir, relPath);
 
     const response = await fetch(resolved.url, {

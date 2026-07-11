@@ -6,6 +6,7 @@ import {
   localSeek, localPlay, localPause, localPositionMs, localDurationMs, LOCAL_DEVICE_ID,
 } from "/app/main.js";
 import { lyric, lyricLoading, ensureLyric } from "/app/lyric-state.js";
+import { downloadedBadge, refreshDownloadedKeys } from "/app/download.js";
 
 const FAV_PLAYLIST_NAME = "我喜欢的音乐";
 
@@ -277,6 +278,7 @@ export const PlayerView = {
     onMounted(() => {
       sync().then(loadLyric);
       loadFavorites();
+      refreshDownloadedKeys();
       syncTimer = setInterval(sync, 5000);
       localTimer = setInterval(localTick, 1000);
       stripRaf = requestAnimationFrame(stripFrame);
@@ -300,7 +302,10 @@ export const PlayerView = {
           },
         }, track.value?.coverUrl ? [] : Icons.note()),
         h("div", { class: "np-head" }, [
-          h("div", { class: "np-title" }, track.value?.title || "暂无播放"),
+          h("div", { class: "np-title" }, [
+            track.value?.title || "暂无播放",
+            track.value ? downloadedBadge(track.value) : null,
+          ]),
           h("div", { class: "np-artist" },
             track.value
               ? `${track.value.artist || "未知"}${track.value.album ? " · " + track.value.album : ""}`

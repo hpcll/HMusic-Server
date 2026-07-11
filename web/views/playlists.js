@@ -3,12 +3,20 @@ import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { Modal } from "/app/components/modal.js";
 import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
+import {
+  openDownloadPicker,
+  renderDownloadPicker,
+  refreshDownloadedKeys,
+  downloadedBadge,
+  downloadedList,
+} from "/app/download.js";
 
 // 歌单页：列表 + 详情二级视图。家人朋友可保存喜欢的歌单并一键播放。
 export const PlaylistsView = {
   setup() {
     const playlists = ref([]);
     const detail = ref(null); // 非空时显示详情
+    const downloadsOpen = ref(false); // 「已下载」系统视图（缓存层，不是歌单）
     const newName = ref("");
     const busy = ref(false);
     const createOpen = ref(false); // 「创建歌单」弹窗
@@ -133,9 +141,39 @@ export const PlaylistsView = {
       }
     }
 
-    onMounted(loadList);
+    // 播放已下载：整批灌队列（本地文件秒开），可从第 N 首开始。
+    async function playDownloads(startIndex = 0) {
+      const items = downloadedList.value;
+      if (!items.length) return;
+      primeLocalAudio();
+      try {
+        const tracks = items.map((d) => d.track);
+        await api("/queue", {
+          method: "PUT",
+          body: { tracks, currentIndex: startIndex },
+        });
+        await api("/playback/play", {
+          method: "POST",
+          body: { track: tracks[startIndex], queueIndex: startIndex },
+        });
+        await refreshPlayback();
+        toast("开始播放已下载音乐", "success");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
 
-    return () => (detail.value ? renderDetail() : renderList());
+    onMounted(() => {
+      loadList();
+      refreshDownloadedKeys();
+    });
+
+    return () =>
+      downloadsOpen.value
+        ? renderDownloads()
+        : detail.value
+          ? renderDetail()
+          : renderList();
 
     function renderList() {
       return h("main", { class: "view playlists-view" }, [
@@ -152,6 +190,25 @@ export const PlaylistsView = {
         ]),
         createOpen.value ? renderCreateModal() : null,
         importOpen.value ? renderImportModal() : null,
+        // 「已下载」系统视图入口卡（缓存层，非歌单——不可删、不占命名空间）
+        h("div", { class: "playlist-grid" }, [
+          h("div", {
+            class: "playlist-card card",
+            onClick: () => { downloadsOpen.value = true; },
+          }, [
+            h("div", { class: "pl-icon" }, Icons.download()),
+            h("div", { class: "pl-meta" }, [
+              h("div", { class: "pl-name" }, "已下载"),
+              h("div", { class: "muted" }, `${downloadedList.value.length} 首 · 本地`),
+            ]),
+            h("div", { class: "pl-actions" }, [
+              h("button", {
+                class: "icon-btn", title: "播放全部",
+                onClick: (e) => { e.stopPropagation(); playDownloads(); },
+              }, Icons.play()),
+            ]),
+          ]),
+        ]),
         playlists.value.length === 0
           ? h("div", { class: "muted center" }, "还没有歌单，创建一个吧")
           : h("div", { class: "playlist-grid" },
@@ -245,12 +302,45 @@ export const PlaylistsView = {
                   h("div", { class: "queue-index" }, String(i + 1)),
                   h("div", { class: "track-info", style: { cursor: "pointer" },
                     onClick: () => playPlaylist(d.id, i) }, [
-                    h("div", { class: "track-title" }, it.track.title),
+                    h("div", { class: "track-title" }, [it.track.title, downloadedBadge(it.track)]),
                     h("div", { class: "track-artist" }, it.track.artist || "未知"),
                   ]),
                   h("div", { class: "track-actions" }, [
+                    h("button", { class: "icon-btn", title: "下载到服务器",
+                      onClick: () => openDownloadPicker(it.track) }, Icons.download()),
                     h("button", { class: "icon-btn", title: "从歌单移除",
                       onClick: () => removeTrack(it.id) }, Icons.close()),
+                  ]),
+                ]),
+              ),
+            ),
+        renderDownloadPicker(),
+      ]);
+    }
+
+    // 「已下载」系统视图：本地缓存的歌，点行即整批灌队列从该首播（本地文件秒开）。
+    function renderDownloads() {
+      const items = downloadedList.value;
+      return h("main", { class: "view playlist-detail" }, [
+        h("div", { class: "detail-head" }, [
+          h("button", { class: "ghost-btn",
+            onClick: () => { downloadsOpen.value = false; } }, "‹ 返回"),
+          h("button", { class: "secondary-btn", disabled: !items.length,
+            onClick: () => playDownloads() }, "播放全部"),
+        ]),
+        h("h2", { class: "view-title" }, "已下载"),
+        h("p", { class: "muted" }, "本地缓存的音乐，播放不依赖网络音源、永不过期"),
+        items.length === 0
+          ? h("div", { class: "muted center" }, "还没有下载的音乐，在搜索/歌单/榜单里点下载图标")
+          : h("ul", { class: "track-list track-cols" },
+              items.map((d, i) =>
+                h("li", { key: d.id, class: "track-row" }, [
+                  h("div", { class: "queue-index" }, String(i + 1)),
+                  h("div", { class: "track-info", style: { cursor: "pointer" },
+                    onClick: () => playDownloads(i) }, [
+                    h("div", { class: "track-title" }, d.title),
+                    h("div", { class: "track-artist" },
+                      `${d.artist || "未知"}${d.quality ? " · " + d.quality : ""}`),
                   ]),
                 ]),
               ),

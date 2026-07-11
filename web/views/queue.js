@@ -2,6 +2,12 @@ import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
+import {
+  openDownloadPicker,
+  renderDownloadPicker,
+  refreshDownloadedKeys,
+  downloadedBadge,
+} from "/app/download.js";
 
 const PLAY_MODES = [
   { value: "list_loop", label: "列表循环" },
@@ -25,20 +31,20 @@ export const QueueView = {
     }
 
     async function playAt(index) {
+      const track = queue.value?.items[index]?.track;
+      if (!track) return;
       busy.value = true;
       primeLocalAudio(); // 本机播放：手势内解锁 <audio>
       try {
-        // 跳到该曲后触发播放（后端 setCurrentQueueIndex 只改指针，需再 play 当前曲）。
-        await api("/queue/current", { method: "POST", body: { index } });
-        const track = queue.value.items[index]?.track;
-        if (track) {
-          await api("/playback/play", { method: "POST", body: { track, queueIndex: index } });
-          await refreshPlayback();
-        }
-        await load();
+        // 一步到位：playTrack 内部会用 queueIndex 把当前指针设到这一项
+        // （syncQueuePlaybackTrack），无需先单独调 /queue/current——两步会留下
+        // "指针改了但没播成"的半成功窗口。
+        await api("/playback/play", { method: "POST", body: { track, queueIndex: index } });
+        await refreshPlayback();
       } catch (error) {
         toast(error.message, "error");
       } finally {
+        await load(); // 无论成败都与服务端对齐，杜绝状态错位
         busy.value = false;
       }
     }
@@ -81,7 +87,10 @@ export const QueueView = {
       }
     }
 
-    onMounted(load);
+    onMounted(() => {
+      load();
+      refreshDownloadedKeys();
+    });
 
     return () => {
       const q = queue.value;
@@ -117,7 +126,7 @@ export const QueueView = {
                     class: "track-info", style: { cursor: "pointer" },
                     onClick: () => playAt(i),
                   }, [
-                    h("div", { class: "track-title" }, it.track.title),
+                    h("div", { class: "track-title" }, [it.track.title, downloadedBadge(it.track)]),
                     h("div", { class: "track-artist" }, it.track.artist || "未知"),
                   ]),
                   h("div", { class: "track-actions" }, [
@@ -126,12 +135,17 @@ export const QueueView = {
                       title: "播放", onClick: () => playAt(i),
                     }, Icons.play()),
                     h("button", {
+                      class: "icon-btn", title: "下载到服务器",
+                      onClick: () => openDownloadPicker(it.track),
+                    }, Icons.download()),
+                    h("button", {
                       class: "icon-btn", title: "移除", onClick: () => removeAt(i),
                     }, Icons.close()),
                   ]),
                 ]),
               ),
             ),
+        renderDownloadPicker(),
       ]);
     };
   },

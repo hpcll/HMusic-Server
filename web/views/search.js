@@ -1,8 +1,14 @@
-import { ref, h } from "vue";
+import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { Modal } from "/app/components/modal.js";
 import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
+import {
+  openDownloadPicker,
+  renderDownloadPicker,
+  refreshDownloadedKeys,
+  downloadedBadge,
+} from "/app/download.js";
 
 // 搜索歌曲并一键播放 / 加入队列 / 加入歌单。
 // 搜索词和结果放模块级：切到别的页面再回来不丢（刷新页面才重置）。
@@ -66,24 +72,12 @@ export const SearchView = {
       }
     }
 
-    // 下载到服务器本地：之后这首歌播放走本地文件，不再受平台直链过期影响。
-    async function download(track) {
-      actingId.value = track.id;
-      try {
-        const result = await api("/downloads", { method: "POST", body: { track } });
-        const status = result.download?.status;
-        toast(
-          status === "done"
-            ? `已在本地：${track.title}`
-            : `开始下载：${track.title}`,
-          "success",
-        );
-      } catch (error) {
-        toast(error.message, "error");
-      } finally {
-        actingId.value = "";
-      }
+    // 下载到服务器本地：弹窗选音质后提交；下载后这首歌播放走本地文件。
+    function download(track) {
+      openDownloadPicker(track);
     }
+
+    onMounted(refreshDownloadedKeys);
 
     // ── 加入歌单 ──
     async function openPicker(track) {
@@ -213,7 +207,7 @@ export const SearchView = {
                     h("div", { class: "track-cover", style: t.coverUrl ? { backgroundImage: `url(${t.coverUrl})` } : {} },
                       t.coverUrl ? [] : "♪"),
                     h("div", { class: "track-info" }, [
-                      h("div", { class: "track-title" }, t.title),
+                      h("div", { class: "track-title" }, [t.title, downloadedBadge(t)]),
                       h("div", { class: "track-artist" }, `${t.artist || "未知"}${t.album ? " · " + t.album : ""}`),
                     ]),
                     h("div", { class: "track-actions" }, [
@@ -238,6 +232,7 @@ export const SearchView = {
                 ),
               ),
         pickerTrack.value ? renderPicker() : null,
+        renderDownloadPicker(),
       ]);
   },
 };
