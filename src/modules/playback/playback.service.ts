@@ -273,6 +273,47 @@ export async function resumePlayback(): Promise<HMusicPlaybackState> {
   return playbackState;
 }
 
+// 切换默认设备后同步播放目标：不切的话 resume/pause 仍指向旧音箱——
+// 用户明明选了"本机播放"，按播放却还去控制小米设备（会话过期时报
+// "小米设备控制请求失败"，看起来莫名其妙）。旧音箱在播则尽力暂停；
+// 状态转为新设备上的暂停态，强制下次播放重新解析（新设备要新 streamUrl）。
+export async function retargetPlayback(
+  deviceId: string,
+): Promise<HMusicPlaybackState> {
+  if (playbackState.deviceId === deviceId) return playbackState;
+  const devices = await listDevices();
+  const target = devices.find((device) => device.id === deviceId);
+  if (!target) {
+    throw new AppError("DEVICE_NOT_FOUND", "设备不存在", 404, { deviceId });
+  }
+
+  const previousId = playbackState.deviceId;
+  if (
+    previousId &&
+    previousId !== LOCAL_DEVICE_ID &&
+    playbackState.state === "playing"
+  ) {
+    try {
+      await sendPlayerOperation(previousId, "pause");
+    } catch {
+      // 旧设备失联不阻断切换
+    }
+  }
+
+  playbackState = {
+    ...playbackState,
+    deviceId: target.id,
+    deviceName: target.name,
+    state: playbackState.track ? "paused" : playbackState.state,
+    streamUrl: undefined,
+    seekEnabled: target.capabilities.supportsSeek,
+    updatedAt: Date.now(),
+  };
+  lastResolvedAt = 0; // 旧解析作废，resume 时按新设备重新解析
+  persistPlaybackState();
+  return playbackState;
+}
+
 export async function stopPlayback(): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(playbackState.deviceId);
   if (target.id !== LOCAL_DEVICE_ID) {

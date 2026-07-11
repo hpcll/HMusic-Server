@@ -36,6 +36,10 @@ const playSchema = z
     quality: z.string().min(1).optional(),
     durationMs: z.number().int().nonnegative().optional(),
     positionMs: z.number().int().nonnegative().optional(),
+    // 队列精确点播必带——同名歌曲在队列里可能出现多次，靠它定位第几项。
+    // playTrack/PlayTrackInput 早已支持，此前 schema 漏声明 + strict 拒收，
+    // 导致"从队列点重复歌"整条链断掉（指针改了但播放 400）。
+    queueIndex: z.number().int().nonnegative().optional(),
   })
   .strict();
 
