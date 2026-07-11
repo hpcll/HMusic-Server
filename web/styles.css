@@ -457,7 +457,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   display: grid;
   grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
   align-items: center;
-  gap: 56px;
+  /* 中缝加大把歌词整体右移，封面（左列固定宽）位置不受影响 */
+  gap: 96px;
   /* 歌词栏(右列 1fr)向右溢出 880 边界，吃掉右侧留白（留 40px 边距）。
      右侧留白 = (视口 - 侧栏 - 880内容盒)/2；封面(左列固定)纹丝不动。
      依赖 --sidebar-w 与 .view 的 880 max-width，改动它们时同步。 */
