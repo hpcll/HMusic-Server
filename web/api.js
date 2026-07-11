@@ -43,9 +43,11 @@ export async function api(path, options = {}) {
     body,
   });
 
-  // 401 统一视为登录失效，清 token 让路由回登录页。
+  // 401 统一视为登录失效，清 token 并广播——main.js 监听后跳登录页，
+  // 否则页面停在原地装死，点什么都只弹"登录已失效"。
   if (response.status === 401) {
     clearToken();
+    window.dispatchEvent(new Event("hmusic:unauthorized"));
     throw new ApiError("UNAUTHORIZED", "登录已失效，请重新登录", 401);
   }
 
