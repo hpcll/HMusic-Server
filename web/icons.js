@@ -65,6 +65,32 @@ export const Icons = {
 
   // ── 操作 ──
   play: () => filled([h("path", { d: "M8.5 5.8v12.4l10-6.2z" })]),
+  // ── 播放模式（主控模式键按当前值轮换显示） ──
+  repeat: () => icon([
+    h("path", { d: "M17 2.5l4 4-4 4" }),
+    h("path", { d: "M3 11.5v-1a4 4 0 0 1 4-4h14" }),
+    h("path", { d: "M7 21.5l-4-4 4-4" }),
+    h("path", { d: "M21 12.5v1a4 4 0 0 1-4 4H3" }),
+  ]),
+  repeatOne: () => icon([
+    h("path", { d: "M17 2.5l4 4-4 4" }),
+    h("path", { d: "M3 11.5v-1a4 4 0 0 1 4-4h14" }),
+    h("path", { d: "M7 21.5l-4-4 4-4" }),
+    h("path", { d: "M21 12.5v1a4 4 0 0 1-4 4H3" }),
+    h("path", { d: "M11 10.6l1.6-1v5.2" }),
+  ]),
+  shuffle: () => icon([
+    h("path", { d: "M16 3h5v5" }),
+    h("path", { d: "M4 20L21 3" }),
+    h("path", { d: "M21 16v5h-5" }),
+    h("path", { d: "M15 15l6 6" }),
+    h("path", { d: "M4 4l5 5" }),
+  ]),
+  sequence: () => icon([
+    h("path", { d: "M3 12h14" }),
+    h("path", { d: "M13.5 8l4.5 4-4.5 4" }),
+    h("path", { d: "M21 7v10" }),
+  ]),
   plus: () => icon([h("path", { d: "M12 5v14M5 12h14" })]),
   close: () => icon([h("path", { d: "M6 6l12 12M18 6L6 18" })]),
   chevronRight: () => icon([h("path", { d: "M9.5 6 15.5 12l-6 6" })]),

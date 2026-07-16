@@ -11,6 +11,14 @@ import { ChartsView } from "/app/views/charts.js";
 import { StatsView } from "/app/views/stats.js";
 import { SettingsView } from "/app/views/settings.js";
 
+// 播放模式全集：队列页 tabs 与播放页主控模式键共用（顺序即模式键的轮换序）。
+export const PLAY_MODES = [
+  { value: "list_loop", label: "列表循环" },
+  { value: "single_loop", label: "单曲循环" },
+  { value: "shuffle", label: "随机" },
+  { value: "sequence", label: "顺序" },
+];
+
 // ===== 全局响应式状态 =====
 export const store = reactive({
   ready: false,

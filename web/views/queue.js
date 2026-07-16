@@ -1,20 +1,13 @@
 import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
-import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
+import { refreshPlayback, toast, primeLocalAudio, PLAY_MODES } from "/app/main.js";
 import {
   openDownloadPicker,
   renderDownloadPicker,
   refreshDownloadedKeys,
   downloadedBadge,
 } from "/app/download.js";
-
-const PLAY_MODES = [
-  { value: "list_loop", label: "列表循环" },
-  { value: "single_loop", label: "单曲循环" },
-  { value: "shuffle", label: "随机" },
-  { value: "sequence", label: "顺序" },
-];
 
 // 播放队列：查看、点播、删单曲、切模式、清空。
 export const QueueView = {

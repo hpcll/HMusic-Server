@@ -2,7 +2,7 @@ import { ref, computed, watch, onMounted, onUnmounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import {
-  store, refreshPlayback, toast, go,
+  store, refreshPlayback, toast, go, PLAY_MODES,
   localSeek, localPlay, localPause, localPositionMs, localDurationMs, LOCAL_DEVICE_ID,
 } from "/app/main.js";
 import { lyric, lyricLoading, ensureLyric } from "/app/lyric-state.js";
@@ -266,6 +266,21 @@ export const PlayerView = {
       }
     }
 
+    // 模式键：按 PLAY_MODES 顺序轮换；接口返回完整播放状态，直接回写 store。
+    async function cycleMode() {
+      const curr = PLAY_MODES.findIndex((m) => m.value === pb.value.playMode);
+      const next = PLAY_MODES[(curr + 1) % PLAY_MODES.length];
+      try {
+        store.playback = await api("/playback/mode", {
+          method: "POST",
+          body: { playMode: next.value },
+        });
+        toast(`播放模式：${next.label}`, "info");
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
     async function commitVolume() {
       volDragging.value = false;
       try {
@@ -343,6 +358,11 @@ export const PlayerView = {
             },
           }),
           h("span", { class: "progress-time" }, formatTime(totalMs())),
+          h("button", {
+            class: "icon-btn",
+            title: "播放队列",
+            onClick: () => go("queue"),
+          }, Icons.queue()),
           h("div", {
             class: ["volume-wrap", { open: volumeOpen.value }],
             // hover 展开仅限有悬停能力的设备——触屏上 mouseenter 会和 click
@@ -378,8 +398,9 @@ export const PlayerView = {
           ]),
         ]),
 
-        // 单行主控：收藏 / 上一曲 / 播放暂停 / 下一曲 / 队列 —— 五键对称，
-        // 播放键正中，收藏与队列作两端配重。
+        // 单行主控：收藏 / 上一曲 / 播放暂停 / 下一曲 / 模式 —— 五键对称，
+        // 播放键正中，收藏与模式作两端配重；队列/音量在进度行末
+        // （Spotify 桌面右下同款组合）。
         h("div", { class: "controls" }, [
           h("button", {
             class: ["ctrl-btn", "ctrl-fav", { active: !!favItem.value }],
@@ -394,9 +415,11 @@ export const PlayerView = {
           ctrlBtn("next", ICON.next(), busy.value, () => control("next")),
           h("button", {
             class: "ctrl-btn",
-            title: "播放队列",
-            onClick: () => go("queue"),
-          }, Icons.queue()),
+            title: `播放模式：${
+              PLAY_MODES.find((m) => m.value === pb.value.playMode)?.label || "列表循环"
+            }（点击切换）`,
+            onClick: cycleMode,
+          }, (MODE_ICONS[pb.value.playMode] || Icons.repeat)()),
         ]),
       ]);
     }
@@ -475,6 +498,14 @@ export const PlayerView = {
 const STATE_LABELS = {
   idle: "空闲", loading: "加载中", playing: "播放中",
   paused: "已暂停", stopped: "已停止", error: "出错",
+};
+
+// 模式值 → 主控模式键图标（与 PLAY_MODES 的 value 一一对应）
+const MODE_ICONS = {
+  list_loop: Icons.repeat,
+  single_loop: Icons.repeatOne,
+  shuffle: Icons.shuffle,
+  sequence: Icons.sequence,
 };
 
 function coverStyle(track) {
