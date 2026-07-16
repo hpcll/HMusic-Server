@@ -320,7 +320,9 @@ export const PlayerView = {
         // 窄屏：染色歌词条放在信息与进度之间（QQ 音乐同构布局）
         isNarrow.value ? renderLyricStrip() : null,
 
-        // 进度条（本机播放时长以 <audio> 为准兜底）
+        // 进度条（本机播放时长以 <audio> 为准兜底）+ 行末音量键。
+        // 音量是「输出强度」，语义上与进度同层（Spotify 桌面版同款位置），
+        // 把主控第五键让给队列——窄屏队列页的唯一入口。
         h("div", { class: "progress-row" }, [
           h("span", { class: "progress-time" }, formatTime(displayPos.value)),
           h("input", {
@@ -341,22 +343,6 @@ export const PlayerView = {
             },
           }),
           h("span", { class: "progress-time" }, formatTime(totalMs())),
-        ]),
-
-        // 单行主控：收藏 / 上一曲 / 播放暂停 / 下一曲 / 音量 —— 五键对称，
-        // 播放键正中，收藏与音量作两端配重；滑块悬浮展开不挤动布局。
-        h("div", { class: "controls" }, [
-          h("button", {
-            class: ["ctrl-btn", "ctrl-fav", { active: !!favItem.value }],
-            title: favItem.value ? "从「我喜欢的音乐」移除" : "加入「我喜欢的音乐」",
-            disabled: !track.value || favBusy.value,
-            onClick: toggleFavorite,
-          }, favItem.value ? Icons.heartFilled() : Icons.heart()),
-          ctrlBtn("previous", ICON.previous(), busy.value, () => control("previous")),
-          pb.value.state === "playing"
-            ? ctrlBtn("pause", ICON.pause(), busy.value, () => control("pause"), true)
-            : ctrlBtn("resume", ICON.play(), busy.value, () => control("resume"), true),
-          ctrlBtn("next", ICON.next(), busy.value, () => control("next")),
           h("div", {
             class: ["volume-wrap", { open: volumeOpen.value }],
             // hover 展开仅限有悬停能力的设备——触屏上 mouseenter 会和 click
@@ -369,7 +355,7 @@ export const PlayerView = {
               : undefined,
           }, [
             h("button", {
-              class: "ctrl-btn",
+              class: "icon-btn",
               title: "音量",
               onClick: () => (volumeOpen.value = !volumeOpen.value),
             }, volumeIcon(volume.value)),
@@ -390,6 +376,27 @@ export const PlayerView = {
               h("span", { class: "volume-pct" }, String(volume.value)),
             ]),
           ]),
+        ]),
+
+        // 单行主控：收藏 / 上一曲 / 播放暂停 / 下一曲 / 队列 —— 五键对称，
+        // 播放键正中，收藏与队列作两端配重。
+        h("div", { class: "controls" }, [
+          h("button", {
+            class: ["ctrl-btn", "ctrl-fav", { active: !!favItem.value }],
+            title: favItem.value ? "从「我喜欢的音乐」移除" : "加入「我喜欢的音乐」",
+            disabled: !track.value || favBusy.value,
+            onClick: toggleFavorite,
+          }, favItem.value ? Icons.heartFilled() : Icons.heart()),
+          ctrlBtn("previous", ICON.previous(), busy.value, () => control("previous")),
+          pb.value.state === "playing"
+            ? ctrlBtn("pause", ICON.pause(), busy.value, () => control("pause"), true)
+            : ctrlBtn("resume", ICON.play(), busy.value, () => control("resume"), true),
+          ctrlBtn("next", ICON.next(), busy.value, () => control("next")),
+          h("button", {
+            class: "ctrl-btn",
+            title: "播放队列",
+            onClick: () => go("queue"),
+          }, Icons.queue()),
         ]),
       ]);
     }

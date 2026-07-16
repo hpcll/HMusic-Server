@@ -221,7 +221,7 @@ export const ChartsView = {
     function renderDetail() {
       return h("main", { class: "view charts-view" }, [
         h("div", { class: "detail-head" }, [
-          h("button", { class: "ghost-btn", onClick: backToWall }, "‹ 返回"),
+          h("button", { class: "secondary-btn", onClick: backToWall }, "‹ 返回"),
           chart.value && chart.value.entries.some((e) => e.track)
             ? h("button", {
                 class: "secondary-btn",

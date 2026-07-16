@@ -105,9 +105,8 @@ export const SettingsView = {
         const def = ALL_ITEMS.find((item) => item.key === section.value);
         return h("main", { class: "view settings-view" }, [
           h("div", { class: "section-head" }, [
-            h("button", { class: "ghost-btn", onClick: back }, "‹ 设置"),
+            h("button", { class: "secondary-btn", onClick: back }, "‹ 设置"),
             h("span", { class: "section-title" }, def?.label || ""),
-            h("span", { class: "section-head-pad" }),
           ]),
           h(SECTION_COMPONENTS[section.value], { key: section.value }),
         ]);

@@ -288,7 +288,7 @@ export const PlaylistsView = {
       const items = d.items || [];
       return h("main", { class: "view playlist-detail" }, [
         h("div", { class: "detail-head" }, [
-          h("button", { class: "ghost-btn", onClick: backToList }, "‹ 返回"),
+          h("button", { class: "secondary-btn", onClick: backToList }, "‹ 返回"),
           h("button", { class: "secondary-btn", disabled: !items.length,
             onClick: () => playPlaylist(d.id) }, "播放全部"),
         ]),
@@ -323,7 +323,7 @@ export const PlaylistsView = {
       const items = downloadedList.value;
       return h("main", { class: "view playlist-detail" }, [
         h("div", { class: "detail-head" }, [
-          h("button", { class: "ghost-btn",
+          h("button", { class: "secondary-btn",
             onClick: () => { downloadsOpen.value = false; } }, "‹ 返回"),
           h("button", { class: "secondary-btn", disabled: !items.length,
             onClick: () => playDownloads() }, "播放全部"),

@@ -287,7 +287,11 @@ window.addEventListener("hashchange", applyRoute);
 // ===== 根组件 =====
 // 桌面：左侧固定 sidebar（品牌 / 导航 / mini 播放状态 / 用户）+ 右侧内容区。
 // 窄屏（<860px）：sidebar 隐藏，回退为顶栏 + 底部导航（CSS 媒体查询切换）。
-const NAV_ITEMS = ["player", "search", "queue", "playlists", "charts", "stats", "settings"];
+const SIDEBAR_ITEMS = ["player", "search", "queue", "playlists", "charts", "stats", "settings"];
+// 移动底栏 6 tab：「播放」放首位，其图标即迷你播放指示器（封面 + 进度环 +
+// 状态徽章）——对齐 Flutter app _PlayTabIcon 的方案：mini player 不做横条，
+// 入口就是 tab 本身。队列窄屏暂无入口（桌面侧栏可达）。
+const MOBILE_NAV_ITEMS = ["player", "charts", "search", "playlists", "stats", "settings"];
 
 const App = {
   setup() {
@@ -346,7 +350,7 @@ const Sidebar = {
         ]),
 
         h("nav", { class: "side-nav" },
-          NAV_ITEMS.map((name) =>
+          SIDEBAR_ITEMS.map((name) =>
             h("button", {
               key: name,
               class: ["side-item", { active: router.name === name }],
@@ -403,13 +407,56 @@ const MobileTopBar = {
   },
 };
 
+// 底栏「播放」tab 的迷你播放指示器：圆形封面 + 外圈进度弧 + 右下状态徽章。
+// 进度随全局 playback 轮询刷新（本机 3s / 音箱 10s），环上一跳几个百分点，
+// 用 CSS transition 缓动衔接；播放中环与徽章用品牌青绿（「在播」专属点缀）。
+const RING_R = 11;
+const RING_C = 2 * Math.PI * RING_R;
+
+function navNowIcon(pb) {
+  const track = pb.track;
+  const dur = pb.durationMs || 0;
+  const pct = dur > 0 ? Math.min(1, Math.max(0, (pb.positionMs || 0) / dur)) : 0;
+  const playing = pb.state === "playing";
+  return h("span", { class: "nav-now" }, [
+    h("span", {
+      class: "nav-now-cover",
+      style: track.coverUrl ? { backgroundImage: `url(${track.coverUrl})` } : {},
+    }, track.coverUrl ? [] : Icons.note()),
+    h("svg", { class: "nav-now-ring", viewBox: "0 0 24 24", "aria-hidden": "true" }, [
+      h("circle", { class: "ring-track", cx: 12, cy: 12, r: RING_R }),
+      h("circle", {
+        class: ["ring-fill", { paused: !playing }],
+        cx: 12, cy: 12, r: RING_R,
+        "stroke-dasharray": RING_C.toFixed(2),
+        "stroke-dashoffset": (RING_C * (1 - pct)).toFixed(2),
+      }),
+    ]),
+    h("span", { class: ["nav-now-badge", { paused: !playing }] },
+      playing ? navBadgeEq() : navBadgePause()),
+  ]);
+}
+
+function navBadgeEq() {
+  return h("svg", { viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": "true" }, [
+    h("path", { d: "M4.5 13h4v7h-4zM10 8h4v12h-4zM15.5 4h4v16h-4z" }),
+  ]);
+}
+
+function navBadgePause() {
+  return h("svg", { viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": "true" }, [
+    h("path", { d: "M6.5 4.5h4.2v15H6.5zM13.3 4.5h4.2v15h-4.2z" }),
+  ]);
+}
+
 const MobileNav = {
   setup() {
-    return () =>
-      h(
+    return () => {
+      const pb = store.playback || {};
+      return h(
         "nav",
         { class: "bottom-nav" },
-        NAV_ITEMS.map((name) =>
+        MOBILE_NAV_ITEMS.map((name) =>
           h(
             "button",
             {
@@ -417,12 +464,18 @@ const MobileNav = {
               onClick: () => go(name),
             },
             [
-              h("span", { class: "nav-icon" }, routes[name].icon()),
-              h("span", { class: "nav-label" }, routes[name].label),
+              h("span", { class: "nav-icon" },
+                name === "player" && pb.track
+                  ? navNowIcon(pb)
+                  : routes[name].icon()),
+              // 底栏空间按 6 tab 分，「正在播放」缩为两字短标签
+              h("span", { class: "nav-label" },
+                name === "player" ? "播放" : routes[name].label),
             ],
           ),
         ),
       );
+    };
   },
 };
 
