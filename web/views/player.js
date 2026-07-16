@@ -203,7 +203,9 @@ export const PlayerView = {
       ensureLyric(track.value);
     }
 
-    watch(track, loadLyric);
+    // 按曲目身份而非对象引用监听：store.playback 被整体替换（轮询/各类操作
+    // 回写）时 track 引用必变，按引用触发会让歌词链路空转一次。
+    watch(() => trackKey(track.value), loadLyric);
 
     const isLocal = () => pb.value.deviceId === LOCAL_DEVICE_ID;
     // 曲目总时长：服务端值优先，本机播放用 <audio>.duration 兜底。
@@ -266,15 +268,20 @@ export const PlayerView = {
       }
     }
 
-    // 模式键：按 PLAY_MODES 顺序轮换；接口返回完整播放状态，直接回写 store。
+    // 模式键：按 PLAY_MODES 顺序轮换。响应只取 playMode 合并——接口返回的是
+    // 服务端内存态（positionMs 等是旧值），整体替换会污染进度并换掉 track 引用，
+    // 引发播放页整树重渲染（表现为内容高度脉动）。切模式就只动模式这一个字段。
     async function cycleMode() {
       const curr = PLAY_MODES.findIndex((m) => m.value === pb.value.playMode);
       const next = PLAY_MODES[(curr + 1) % PLAY_MODES.length];
       try {
-        store.playback = await api("/playback/mode", {
+        const updated = await api("/playback/mode", {
           method: "POST",
           body: { playMode: next.value },
         });
+        if (store.playback) {
+          store.playback = { ...store.playback, playMode: updated.playMode };
+        }
         toast(`播放模式：${next.label}`, "info");
       } catch (error) {
         toast(error.message, "error");

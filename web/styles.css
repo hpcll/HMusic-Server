@@ -555,9 +555,9 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .np-lyrics {
   min-width: 0;
   position: relative;
-  /* 高度跟随左栏舞台，内部滚动 */
-  min-height: 420px;
-  max-height: 640px;
+  /* 定高而非 min/max 弹性：歌词区在 加载占位↔列表 间切换时高度恒定，
+     否则父级的垂直居中会随之重排，页面内容肉眼可见地上下跳。 */
+  height: 640px;
   overflow: hidden;
   /* 上下渐隐，营造"纸卷"感 */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
@@ -635,9 +635,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .ctrl-fav.active { color: #e0245e; border-color: color-mix(in srgb, #e0245e 45%, var(--line)); }
 .ctrl-fav.active:hover { border-color: #e0245e; }
 @media (max-width: 1023px) {
-  .np-lyrics { min-height: 300px; max-height: 380px; }
-  .lyrics-list { padding: 30% 8px; }
-  /* 窄屏播放页单屏化：不再内联歌词栏（收成歌词条），封面限高保证
+  /* 窄屏播放页单屏化：不再内联歌词栏（收成歌词条，np-lyrics 只剩歌词页在用
+     且被 .lyrics-page 覆写），封面限高保证
      封面+信息+进度+主控+歌词条一屏放下，底部导航不被顶出视野。 */
   .player-view { min-height: auto; align-content: start; }
   .np-cover { max-width: min(100%, 44vh); }
@@ -702,7 +701,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.lyrics-page .np-lyrics { flex: 1; min-height: 0; max-height: none; }
+/* height:auto 解除基础规则的 640 定高——歌词页由 flex:1 弹性撑满 */
+.lyrics-page .np-lyrics { flex: 1; height: auto; min-height: 0; max-height: none; }
 .lyrics-page .lyrics-list { padding: 40% 8px; }
 .lyrics-page-ctrl { display: grid; gap: 6px; padding-top: 2px; }
 .lyrics-page-btns {
