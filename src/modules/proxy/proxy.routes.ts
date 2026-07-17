@@ -28,15 +28,31 @@ export async function proxyRoutes(app: FastifyInstance): Promise<void> {
   app.get("/audio/:token", async (request, reply) => {
     const { token } = tokenParamsSchema.parse(request.params);
     const targetUrl = decodeAudioProxyToken(token);
-    const response = await fetch(targetUrl, {
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          request.headers["user-agent"] ||
-          "Mozilla/5.0 HMusic-Server-Audio-Proxy",
-        ...(request.headers.range ? { Range: request.headers.range } : {}),
-      },
-    });
+    // 上游握手必须限时：node fetch 无默认超时，坏直链黑洞会让 <audio>/AVPlayer
+    // 无错误地永远卡在加载（客户端表现为 0:00 死住）。不能用 AbortSignal.timeout
+    // ——它在正文流式转发阶段仍会触发，整首歌会在限时点被掐断；拿到响应头
+    // 就清掉定时器，正文转发不限时。
+    const controller = new AbortController();
+    const headerTimer = setTimeout(() => controller.abort(), 15_000);
+    let response;
+    try {
+      response = await fetch(targetUrl, {
+        redirect: "follow",
+        signal: controller.signal,
+        headers: {
+          "User-Agent":
+            request.headers["user-agent"] ||
+            "Mozilla/5.0 HMusic-Server-Audio-Proxy",
+          ...(request.headers.range ? { Range: request.headers.range } : {}),
+        },
+      });
+    } catch (error) {
+      throw new AppError("AUDIO_PROXY_UPSTREAM_FAILED", "上游音频拉取失败", 502, {
+        cause: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      clearTimeout(headerTimer);
+    }
 
     if (!response.body) {
       throw new AppError(

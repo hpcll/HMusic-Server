@@ -13,16 +13,25 @@ const PER_PLATFORM_LIMIT = 30;
 
 export type NativeSearchPlatform = "tx" | "kw" | "wy";
 
+const PLATFORM_SEARCHERS: Record<
+  NativeSearchPlatform,
+  (query: string, page: number) => Promise<HMusicTrack[]>
+> = {
+  tx: searchQQ,
+  kw: searchKuwo,
+  wy: searchNetease,
+};
+
 // 每家平台限时抓取，任一失败/超时都不影响其它家（Promise.allSettled）。
+// order 决定参与的平台与交错时的领先顺序（运行配置"搜索策略"由上层传入）。
 export async function nativeSearch(
   query: string,
   page = 1,
+  order: NativeSearchPlatform[] = ["tx", "kw", "wy"],
 ): Promise<HMusicTrack[]> {
-  const results = await Promise.allSettled([
-    searchQQ(query, page),
-    searchKuwo(query, page),
-    searchNetease(query, page),
-  ]);
+  const results = await Promise.allSettled(
+    order.map((platform) => PLATFORM_SEARCHERS[platform](query, page)),
+  );
 
   const tracks: HMusicTrack[] = [];
   const perPlatform: HMusicTrack[][] = [];

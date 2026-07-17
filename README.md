@@ -40,10 +40,12 @@ LX 音源插件（选文件上传）、手工曲目、运行配置、链路诊�
 
 首次使用可以在管理页创建管理员账号、登录小米账号、刷新小米设备并选择默认播放设备。管理页还支持运行配置、手工曲目、LX 插件管理、链路诊断、搜索和播放测试。
 
-局域网播放时，`HMUSIC_PUBLIC_BASE_URL` 必须填手机和小爱音箱都能访问的地址，例如：
+局域网播放通常无需配置 `HMUSIC_PUBLIC_BASE_URL`：它是回环地址或换网后失效的 IPv4 时，
+服务端会在生成音频地址时实时替换为本机当前局域网 IPv4，换了网络也不用改配置重启。
+只有走反向代理或公网域名时才需要显式填写，例如：
 
 ```env
-HMUSIC_PUBLIC_BASE_URL=http://192.168.31.247:8090
+HMUSIC_PUBLIC_BASE_URL=https://music.example.com
 ```
 
 服务端会把解析出的音乐地址转换成带签名的 `/api/v1/proxy/audio/...` 代理地址再下发给小爱音箱，避免部分音乐 CDN 被音箱直连时拦截。
@@ -100,7 +102,7 @@ npm run build
 npm start
 ```
 
-部署时必须修改 `.env` 里的 `HMUSIC_JWT_SECRET`，并把 `HMUSIC_DATA_DIR` 指向持久化目录。App 访问地址和 `HMUSIC_PUBLIC_BASE_URL` 都需要填写 `http://<server-ip>:8090` 或反向代理后的 HTTPS 地址。
+部署时必须修改 `.env` 里的 `HMUSIC_JWT_SECRET`，并把 `HMUSIC_DATA_DIR` 指向持久化目录。App 访问地址填写 `http://<server-ip>:8090` 或反向代理后的 HTTPS 地址；`HMUSIC_PUBLIC_BASE_URL` 仅在反向代理或公网域名场景需要填写，局域网 IPv4 会自动探测。
 
 ### 一键部署到另一台服务器
 

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { env } from "../../config/env.js";
+import { resolvePublicBaseUrl } from "../../shared/public-base-url.js";
 import { createTestToneWav, testTonePath } from "../../shared/test-tone.js";
 
 const testToneWav = createTestToneWav();
@@ -10,7 +10,8 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
     version: "0.1.0",
     apiVersion: "v1",
     mode: "development",
-    publicBaseUrl: env.publicBaseUrl,
+    // 返回实时生效值（回环/失效 IPv4 已替换），设置页看到的即音箱实际拿到的。
+    publicBaseUrl: resolvePublicBaseUrl(),
     capabilities: {
       auth: true,
       config: true,

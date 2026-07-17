@@ -5,11 +5,18 @@ import type {
 } from "../../shared/contracts.js";
 import { AppError } from "../../shared/errors.js";
 import {
+  getRuntimeConfig,
+  type RuntimeConfig,
+} from "../config/config.service.js";
+import {
   listSources,
   resolveSourceTrack,
   searchSourceTracks,
 } from "../sources/sources.service.js";
-import { nativeSearch } from "./native-search.service.js";
+import {
+  nativeSearch,
+  type NativeSearchPlatform,
+} from "./native-search.service.js";
 
 export type SearchTracksInput = {
   query: string;
@@ -47,10 +54,16 @@ export async function searchTracks(
 
   const [nativeTracks, pluginTracksNested] = await Promise.all([
     nativeSources
-      ? nativeSearch(normalizedQuery, input.page).then((tracks) =>
-          nativeSources === "all"
-            ? tracks
-            : tracks.filter((t) => t.source === nativeSources),
+      ? getRuntimeConfig().then((config) =>
+          nativeSearch(
+            normalizedQuery,
+            input.page,
+            searchPlatformOrder(config.searchStrategy),
+          ).then((tracks) =>
+            nativeSources === "all"
+              ? tracks
+              : tracks.filter((t) => t.source === nativeSources),
+          ),
         )
       : Promise.resolve([]),
     Promise.all(
@@ -122,53 +135,164 @@ export async function resolveTrack(input: {
     return { track: input.track, url: input.track.url, quality };
   }
 
-  // 插件曲目：按标准档位逐一尝试，绝不发送 "source"（上游会 500）。
-  const preferred = input.quality || input.track.qualities?.[0];
-  const tiers = [
-    ...(preferred && preferred !== "source" ? [preferred] : []),
-    ...QUALITY_FALLBACK,
-  ].filter((q, i, arr) => arr.indexOf(q) === i); // 去重，保序
+  const config = await getRuntimeConfig();
+  // 首选档 = 请求显式指定 > 运行配置"默认音质"。不再取 track.qualities[0]——
+  // 原生搜索的曲目该数组以 128k 打头，曾导致设置了默认音质点播仍放 128k。
+  const preferred =
+    input.quality && input.quality !== "source"
+      ? input.quality
+      : config.defaultQuality;
+  const tiers = [preferred, ...QUALITY_FALLBACK].filter(
+    (q, i, arr) => arr.indexOf(q) === i,
+  ); // 去重，保序
 
-  let firstUrl: string | undefined; // 全档皆不可播时的兜底
+  // 解析策略：qq/kuwo/netease 优先时，先在偏好平台找同一首歌解析（跨源换源），
+  // 失败回落原始音源；originalFirst 维持只解析原始音源。
+  for (const attempt of resolveAttemptOrder(
+    config.resolveStrategy,
+    input.track.source,
+  )) {
+    const candidateTrack =
+      attempt === "original"
+        ? input.track
+        : await findTrackOnPlatform(attempt, input.track);
+    if (!candidateTrack) continue;
+
+    const resolved = await resolveTiers(candidateTrack, tiers);
+    if (resolved) {
+      // 保留原曲身份（队列同步/播放历史都按原曲记账），只换播放直链。
+      return {
+        track: { ...input.track, url: resolved.url },
+        url: resolved.url,
+        quality: resolved.quality,
+      };
+    }
+  }
+
+  throw new AppError(
+    "TRACK_RESOLVE_NOT_READY",
+    "当前音源或 LX 插件未返回可播放 URL",
+    501,
+    {
+      trackId: input.track.id,
+      source: input.track.source,
+    },
+  );
+}
+
+// 按档位逐一尝试解析并实测可播性；全档皆不可播时兜底返回第一个拿到的直链。
+// 单档解析抛错（插件超时/不认识该档位）只跳过该档，不断整条回退链。
+async function resolveTiers(
+  track: HMusicTrack,
+  tiers: string[],
+): Promise<{ url: string; quality: string } | undefined> {
+  let firstUrl: string | undefined;
   let firstQuality = tiers[0];
-  let url: string | undefined;
-  let usedQuality = tiers[0];
   for (const quality of tiers) {
-    const candidate = await resolveSourceTrack(input.track, quality);
+    let candidate: string | undefined;
+    try {
+      candidate = await resolveSourceTrack(track, quality);
+    } catch {
+      continue;
+    }
     if (!candidate) continue;
     if (!firstUrl) {
       firstUrl = candidate;
       firstQuality = quality;
     }
     if (!VERIFY_STREAM || (await isPlayableUrl(candidate))) {
-      url = candidate;
-      usedQuality = quality;
-      break;
+      return { url: candidate, quality };
     }
   }
-  if (!url && firstUrl) {
-    url = firstUrl;
-    usedQuality = firstQuality;
-  }
+  return firstUrl ? { url: firstUrl, quality: firstQuality } : undefined;
+}
 
-  if (!url) {
-    throw new AppError(
-      "TRACK_RESOLVE_NOT_READY",
-      "当前音源或 LX 插件未返回可播放 URL",
-      501,
-      {
-        trackId: input.track.id,
-        source: input.track.source,
-      },
+// 搜索策略 → 原生平台交错顺序（领先平台的结果排最前）。
+export function searchPlatformOrder(
+  strategy: RuntimeConfig["searchStrategy"],
+): NativeSearchPlatform[] {
+  switch (strategy) {
+    case "kuwoFirst":
+      return ["kw", "tx", "wy"];
+    case "neteaseFirst":
+      return ["wy", "tx", "kw"];
+    case "qqFirst":
+    default:
+      return ["tx", "kw", "wy"];
+  }
+}
+
+// 解析策略 → 尝试序列。偏好平台与原源相同则只剩 original 一步；
+// 最多一次跨源搜索，避免死链歌曲把解析拖成全网大扫荡。
+export function resolveAttemptOrder(
+  strategy: RuntimeConfig["resolveStrategy"],
+  originalSource: string,
+): Array<"original" | NativeSearchPlatform> {
+  const preferred: NativeSearchPlatform | undefined =
+    strategy === "qqFirst"
+      ? "tx"
+      : strategy === "kuwoFirst"
+        ? "kw"
+        : strategy === "neteaseFirst"
+          ? "wy"
+          : undefined;
+  if (!preferred || preferred === originalSource) return ["original"];
+  return [preferred, "original"];
+}
+
+// 在指定平台找"同一首歌"：标题归一后互相包含 + 歌手至少一位对上（有歌手信息时）。
+// 匹配从严——宁可回落原源，也不能换出翻唱/串烧。
+export async function findTrackOnPlatform(
+  platform: NativeSearchPlatform,
+  track: HMusicTrack,
+): Promise<HMusicTrack | undefined> {
+  if (track.source === platform) return track;
+  try {
+    const results = await nativeSearch(
+      `${track.title} ${track.artist}`.trim(),
+      1,
+      [platform],
     );
+    return results.find((candidate) => isSameSong(candidate, track));
+  } catch {
+    return undefined;
+  }
+}
+
+export function isSameSong(
+  candidate: HMusicTrack,
+  target: HMusicTrack,
+): boolean {
+  const targetTitle = normalizeSongText(target.title);
+  const candidateTitle = normalizeSongText(candidate.title);
+  if (!targetTitle || !candidateTitle) return false;
+  if (
+    candidateTitle !== targetTitle &&
+    !candidateTitle.includes(targetTitle) &&
+    !targetTitle.includes(candidateTitle)
+  ) {
+    return false;
   }
 
-  return {
-    track: {
-      ...input.track,
-      url,
-    },
-    url,
-    quality: usedQuality,
-  };
+  const targetArtists = artistTokens(target.artist);
+  const candidateArtists = artistTokens(candidate.artist);
+  if (targetArtists.length === 0 || candidateArtists.length === 0) return true;
+  return targetArtists.some((a) =>
+    candidateArtists.some((c) => c.includes(a) || a.includes(c)),
+  );
+}
+
+function normalizeSongText(value: string): string {
+  return (value || "")
+    .toLowerCase()
+    .replace(/[\s'"''""·・\-—–~！!？?。.，,、（）()[\]【】<>《》]+/g, "");
+}
+
+function artistTokens(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .toLowerCase()
+    .split(/[/、,，&]|feat\.?|ft\.?/)
+    .map((token) => token.replace(/\s+/g, ""))
+    .filter((token) => token && token !== "未知艺术家");
 }

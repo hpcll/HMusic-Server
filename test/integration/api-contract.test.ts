@@ -219,6 +219,31 @@ describe("api contract", () => {
         }),
       );
 
+      // 回归：GET /config 读出的 lxPlugins（含 sourceUrl）原样 PATCH 回去必须过——
+      // 曾因 strict 子 schema 漏声明 sourceUrl 被 400 拒收（queueIndex 同型 bug）。
+      const configWithPlugin = await app.inject({
+        method: "GET",
+        url: "/api/v1/config",
+        headers,
+      });
+      expect(configWithPlugin.statusCode).toBe(200);
+      const roundTripPlugins = configWithPlugin
+        .json()
+        .lxPlugins.map((plugin: Record<string, unknown>) => ({
+          ...plugin,
+          sourceUrl: "https://example.com/fixture-lx.js",
+        }));
+      const configRoundTrip = await app.inject({
+        method: "PATCH",
+        url: "/api/v1/config",
+        headers,
+        payload: { lxPlugins: roundTripPlugins },
+      });
+      expect(configRoundTrip.statusCode).toBe(200);
+      expect(configRoundTrip.json().lxPlugins[0].sourceUrl).toBe(
+        "https://example.com/fixture-lx.js",
+      );
+
       const savedEventPlugin = await app.inject({
         method: "POST",
         url: "/api/v1/sources/lx-plugins",
@@ -342,7 +367,10 @@ describe("api contract", () => {
           sourceTrackId: "hmusic-test-tone",
           title: "HMusic Test Tone",
           durationMs: 3000,
-          url: "http://127.0.0.1:8090/api/v1/system/test-tone.wav",
+          // 回环 base 会被实时替换为本机局域网 IPv4，host 因机器而异，只锁形状。
+          url: expect.stringMatching(
+            /^http:\/\/[^/]+\/api\/v1\/system\/test-tone\.wav$/,
+          ),
         }),
       );
 
@@ -960,9 +988,8 @@ describe("api contract", () => {
       expect(ubusCalls.at(-1)?.message).toEqual(
         expect.objectContaining({
           media: "app_ios",
-          music: expect.stringMatching(
-            /http:\/\/127\.0\.0\.1:8090\/api\/v1\/proxy\/audio\//,
-          ),
+          // 同上：回环 base 被实时替换为局域网 IPv4，host 不写死。
+          music: expect.stringMatching(/http:\/\/[^/]+\/api\/v1\/proxy\/audio\//),
         }),
       );
 
@@ -1055,9 +1082,8 @@ describe("api contract", () => {
       expect(ubusCalls.at(-1)?.message).toEqual(
         expect.objectContaining({
           media: "app_ios",
-          music: expect.stringMatching(
-            /http:\/\/127\.0\.0\.1:8090\/api\/v1\/proxy\/audio\//,
-          ),
+          // 同上：回环 base 被实时替换为局域网 IPv4，host 不写死。
+          music: expect.stringMatching(/http:\/\/[^/]+\/api\/v1\/proxy\/audio\//),
         }),
       );
 

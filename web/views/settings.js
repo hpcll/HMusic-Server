@@ -299,12 +299,14 @@ const ConfigSection = {
               selectEl(config.value, "defaultQuality", [
                 ["128k", "128k"], ["320k", "320k"], ["flac", "FLAC"], ["hires", "Hi-Res"],
               ]),
+              h("small", { class: "hint" }, "点播与下载的首选档，取不到时自动逐档回退。"),
             ]),
             h("label", { class: "field" }, [
               "搜索策略",
               selectEl(config.value, "searchStrategy", [
                 ["qqFirst", "QQ 优先"], ["kuwoFirst", "酷我优先"], ["neteaseFirst", "网易云优先"],
               ]),
+              h("small", { class: "hint" }, "决定聚合搜索结果里哪家平台的歌排在前面。"),
             ]),
             h("label", { class: "field" }, [
               "解析策略",
@@ -312,6 +314,7 @@ const ConfigSection = {
                 ["originalFirst", "原始结果优先"], ["qqFirst", "QQ 优先"],
                 ["kuwoFirst", "酷我优先"], ["neteaseFirst", "网易云优先"],
               ]),
+              h("small", { class: "hint" }, "选某平台优先时，先在该平台匹配同一首歌取播放链接，失败回落歌曲原平台。"),
             ]),
             h("label", { class: "field" }, [
               "自定义直连播放型号",

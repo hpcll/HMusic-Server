@@ -1,5 +1,5 @@
-import { env } from "../config/env.js";
 import type { HMusicTrack } from "./contracts.js";
+import { resolvePublicBaseUrl } from "./public-base-url.js";
 
 const sampleRate = 44100;
 const durationSeconds = 3;
@@ -13,7 +13,7 @@ const wavSize = 44 + dataSize;
 export const testTonePath = "/api/v1/system/test-tone.wav";
 
 export function createTestToneUrl(): string {
-  return `${env.publicBaseUrl.replace(/\/$/, "")}${testTonePath}`;
+  return `${resolvePublicBaseUrl()}${testTonePath}`;
 }
 
 export function createTestToneTrack(): HMusicTrack {

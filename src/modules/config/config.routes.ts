@@ -37,6 +37,10 @@ const configPatchSchema = z
             defaultQuality: z
               .enum(["128k", "320k", "flac", "hires"])
               .optional(),
+            // RuntimeConfig.lxPlugins 携带订阅链接（GET /config 会返回），
+            // strict 模式下漏声明会导致"读出来的配置原样 PATCH 回去"被 400 拒收
+            // ——与 playSchema 漏 queueIndex 同型的契约断裂。
+            sourceUrl: z.string().url().max(2048).optional(),
           })
           .strict(),
       )

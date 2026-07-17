@@ -798,7 +798,10 @@ function parseDevicePlaybackStatus(
             album: asString(detail.album) || playbackState.track?.album,
             durationMs:
               asNumber(detail.duration) || playbackState.track?.durationMs,
-            coverUrl: asString(detail.cover) || playbackState.track?.coverUrl,
+            // 只收合法 http(s)：设备上报的 cover 可能是任意字符串，混进 track 后
+            // 收藏（trackSchema 的 coverUrl 是 z.string().url()）会被 400 拒收。
+            coverUrl:
+              asHttpUrl(detail.cover) || playbackState.track?.coverUrl,
             url: playbackState.track?.url,
             qualities: playbackState.track?.qualities,
             raw: detail,
@@ -842,6 +845,14 @@ function asString(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (typeof value === "number") return String(value);
   return undefined;
+}
+
+function asHttpUrl(value: unknown): string | undefined {
+  const text = asString(value);
+  if (!text) return undefined;
+  return text.startsWith("http://") || text.startsWith("https://")
+    ? text
+    : undefined;
 }
 
 function asNumber(value: unknown): number | undefined {

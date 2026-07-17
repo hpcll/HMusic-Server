@@ -1,16 +1,19 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../../config/env.js";
 import { AppError } from "../../shared/errors.js";
+import { resolvePublicBaseUrl } from "../../shared/public-base-url.js";
 
 const signatureLength = 22;
 
 export function createAudioProxyUrl(targetUrl: string): string {
-  // 自家代理地址（本地已下载文件等）已是终点，二次包装会让服务器自呼自——直通。
-  const base = env.publicBaseUrl.replace(/\/$/, "");
-  if (targetUrl.startsWith(`${base}/api/v1/proxy/`)) {
-    return targetUrl;
-  }
+  const base = resolvePublicBaseUrl();
   const url = parseHttpUrl(targetUrl);
+  // 自家代理地址（本地已下载文件、历史队列存的签名链接）已是终点，二次包装
+  // 会让服务器自呼自。按路径识别并重挂到当前 base：换网后带旧 IP 的存量链接
+  // 也能继续用——签名只覆盖 token 部分，与 host 无关。
+  if (url.pathname.startsWith("/api/v1/proxy/")) {
+    return `${base}${url.pathname}`;
+  }
   const encoded = Buffer.from(url.toString()).toString("base64url");
   const signature = sign(encoded);
   return `${base}/api/v1/proxy/audio/${encoded}.${signature}`;
@@ -19,7 +22,7 @@ export function createAudioProxyUrl(targetUrl: string): string {
 // 本地已下载音频：/proxy/local/<downloadId>.<签名>，与音频代理同一信任模型
 // （无需登录但必须持有效签名——音箱和 <audio> 都带不了 JWT）。
 export function createLocalAudioUrl(downloadId: string): string {
-  const base = env.publicBaseUrl.replace(/\/$/, "");
+  const base = resolvePublicBaseUrl();
   return `${base}/api/v1/proxy/local/${downloadId}.${sign(downloadId)}`;
 }
 
