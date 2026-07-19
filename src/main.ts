@@ -1,6 +1,10 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import {
+  startPlaybackWatchdog,
+  stopPlaybackWatchdog,
+} from "./modules/playback/playback.service.js";
+import {
   startMdnsAdvertiser,
   stopMdnsAdvertiser,
 } from "./shared/mdns-advertiser.js";
@@ -26,6 +30,8 @@ try {
     port: env.port,
   });
   startMdnsAdvertiser(app.log);
+  // C-12：远端播放期间服务端自查设备状态，客户端退后台后自然播完仍能连播。
+  startPlaybackWatchdog();
 } catch (error) {
   app.log.error(error);
   process.exit(1);
@@ -35,6 +41,7 @@ try {
 // 避免客户端在服务已停后仍收到残留的 mDNS 记录。
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
+    stopPlaybackWatchdog();
     void stopMdnsAdvertiser().finally(() => process.exit(0));
   });
 }

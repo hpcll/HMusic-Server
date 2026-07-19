@@ -829,11 +829,23 @@ function delay(ms: number): Promise<void> {
 // 上次轮询位置接近曲末 + 这次设备转 idle → 视为自然播完，推进队列连播。
 let lastDevicePositionMs = 0;
 
-async function refreshPlaybackStateFromDevice(): Promise<void> {
+// single-flight：客户端 GET /playback/state 与服务端看门狗可能同时触发回读。
+// 并发查设备除了浪费小米请求，还会让两次 refresh 各自看到 playing→idle，
+// 把 nextPlayback 触发两次导致跳两首——共享同一个 in-flight Promise 杜绝该竞态。
+let refreshInFlight: Promise<boolean> | undefined;
+
+function refreshPlaybackStateFromDevice(): Promise<boolean> {
+  refreshInFlight ??= doRefreshPlaybackStateFromDevice().finally(() => {
+    refreshInFlight = undefined;
+  });
+  return refreshInFlight;
+}
+
+async function doRefreshPlaybackStateFromDevice(): Promise<boolean> {
   try {
     const target = await resolveTargetDevice(playbackState.deviceId);
     // 本机播放的真相源是浏览器（通过 reportLocalPlayback 回写），不查小米。
-    if (target.id === LOCAL_DEVICE_ID) return;
+    if (target.id === LOCAL_DEVICE_ID) return true;
     const response = await sendPlaybackUbus(
       target.id,
       "player_get_play_status",
@@ -842,7 +854,7 @@ async function refreshPlaybackStateFromDevice(): Promise<void> {
       },
     );
     const status = parseDevicePlaybackStatus(response);
-    if (!status) return;
+    if (!status) return true;
 
     const wasPlaying = playbackState.state === "playing";
     const prevPositionMs = lastDevicePositionMs;
@@ -882,8 +894,71 @@ async function refreshPlaybackStateFromDevice(): Promise<void> {
         }
       }
     }
+    return true;
   } catch {
     // Device status is best-effort. Keep the optimistic in-memory state.
+    return false;
+  }
+}
+
+// 播放看门狗（C-12）：自然播完连播原本只挂在 refresh-on-read 上，客户端退后台
+// 停止轮询后音箱播完就没人推进队列。服务端在远端播放期间自轮询设备状态，
+// 「无人读也连播」。连播启发式的 15s 曲末窗口按最长 10s 轮询间隔设计，
+// 5s 基础间隔在窗口内。
+const WATCHDOG_BASE_INTERVAL_MS = 5000;
+const WATCHDOG_MAX_INTERVAL_MS = 60000;
+let watchdogActive = false;
+let watchdogTimer: NodeJS.Timeout | undefined;
+let watchdogFailures = 0;
+
+export function startPlaybackWatchdog(): void {
+  if (watchdogActive) return;
+  watchdogActive = true;
+  scheduleWatchdogTick(WATCHDOG_BASE_INTERVAL_MS);
+}
+
+export function stopPlaybackWatchdog(): void {
+  watchdogActive = false;
+  if (watchdogTimer) {
+    clearTimeout(watchdogTimer);
+    watchdogTimer = undefined;
+  }
+}
+
+function scheduleWatchdogTick(delayMs: number): void {
+  watchdogTimer = setTimeout(() => {
+    void runWatchdogTick();
+  }, delayMs);
+  // 看门狗不该阻止进程退出（对齐测试音 timer 的处理）。
+  watchdogTimer.unref?.();
+}
+
+async function runWatchdogTick(): Promise<void> {
+  let delayMs = WATCHDOG_BASE_INTERVAL_MS;
+  // 只在远端设备且 playing/loading 时查设备：连播判定只需要 playing→idle 边沿，
+  // paused/stopped/idle 期间轮询小米云纯属浪费（前台 UI 的回读由 GET state 承担）。
+  const remoteActive =
+    playbackState.deviceId &&
+    playbackState.deviceId !== LOCAL_DEVICE_ID &&
+    (playbackState.state === "playing" || playbackState.state === "loading");
+  if (remoteActive) {
+    const ok = await refreshPlaybackStateFromDevice();
+    if (ok) {
+      watchdogFailures = 0;
+    } else {
+      // 小米会话失效/断网时指数退避，避免每 5s 白打一次小米云。
+      watchdogFailures += 1;
+      delayMs = Math.min(
+        WATCHDOG_BASE_INTERVAL_MS * 2 ** watchdogFailures,
+        WATCHDOG_MAX_INTERVAL_MS,
+      );
+    }
+  } else {
+    watchdogFailures = 0;
+  }
+  // stopPlaybackWatchdog 在 await 期间被调用则不再续排。
+  if (watchdogActive) {
+    scheduleWatchdogTick(delayMs);
   }
 }
 
