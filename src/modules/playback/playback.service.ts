@@ -4,6 +4,7 @@ import type {
   HMusicTrack,
 } from "../../shared/contracts.js";
 import { AppError } from "../../shared/errors.js";
+import { createTestToneUrl } from "../../shared/test-tone.js";
 import { recordPlay } from "../charts/charts.service.js";
 import { LOCAL_DEVICE_ID, listDevices } from "../devices/devices.service.js";
 import { getRuntimeConfig } from "../config/config.service.js";
@@ -246,7 +247,8 @@ export async function resumePlayback(): Promise<HMusicPlaybackState> {
       track: playbackState.track,
       deviceId: target.id,
       positionMs: resumeAt,
-      queueIndex: playbackState.queueIndex >= 0 ? playbackState.queueIndex : undefined,
+      queueIndex:
+        playbackState.queueIndex >= 0 ? playbackState.queueIndex : undefined,
     });
     // 音箱从 0 开播，支持 seek 才拉回原进度（本机播放由前端按 positionMs 对位）。
     if (target.id !== LOCAL_DEVICE_ID && resumeAt > 3000 && state.seekEnabled) {
@@ -569,6 +571,44 @@ export async function speakOnDevice(
   return { deviceId: target.id, deviceName: target.name };
 }
 
+// 播放测试音频：向目标设备发送 3 秒内置测试音，**不修改播放状态**（与正常
+// 播放隔离），不触发队列推进/循环。play_music 机型（如 L05B）设备端自带
+// loop_type，单曲列表会被音箱自己无限循环——必须定时补一发 stop 掐断。
+export async function playTestTone(
+  deviceId?: string,
+): Promise<{ deviceId: string; deviceName: string }> {
+  const target = await resolveTargetDevice(deviceId);
+  if (target.id === LOCAL_DEVICE_ID) {
+    throw new AppError(
+      "DEVICE_TEST_UNSUPPORTED",
+      "本机播放不支持测试音频，请选择小爱音箱",
+      409,
+    );
+  }
+  const testUrl = createTestToneUrl();
+  await sendDevicePlayUrl({
+    deviceId: target.id,
+    hardware: target.type,
+    url: testUrl,
+    title: "HMusic Test Tone",
+    durationMs: 3000,
+  });
+  // 3.5s 后异步掐停设备（不阻塞响应）。真机实测（L05B）：裸 stop 回 code=0
+  // 但设备不执行，pause 才立即生效——与正常播放链路一致用 pause→stop。
+  // 期间如果用户已点播真歌（lastResolvedAt 更新），放过不掐以免误杀。
+  const startedAt = Date.now();
+  const timer = setTimeout(() => {
+    if (lastResolvedAt > startedAt) return;
+    void sendPlayerOperation(target.id, "pause")
+      .then(() => sendPlayerOperation(target.id, "stop"))
+      .catch(() => {
+        // 测试音收尾停失败可忽略（设备可能已自行停止）。
+      });
+  }, 3500);
+  timer.unref?.();
+  return { deviceId: target.id, deviceName: target.name };
+}
+
 async function sendPlayerOperation(
   deviceId: string,
   action: "pause" | "stop" | "play" | "next" | "prev",
@@ -800,8 +840,7 @@ function parseDevicePlaybackStatus(
               asNumber(detail.duration) || playbackState.track?.durationMs,
             // 只收合法 http(s)：设备上报的 cover 可能是任意字符串，混进 track 后
             // 收藏（trackSchema 的 coverUrl 是 z.string().url()）会被 400 拒收。
-            coverUrl:
-              asHttpUrl(detail.cover) || playbackState.track?.coverUrl,
+            coverUrl: asHttpUrl(detail.cover) || playbackState.track?.coverUrl,
             url: playbackState.track?.url,
             qualities: playbackState.track?.qualities,
             raw: detail,

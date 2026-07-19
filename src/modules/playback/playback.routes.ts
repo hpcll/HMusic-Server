@@ -7,7 +7,6 @@ import {
   playModeSchema,
   trackSchema,
 } from "../../shared/schemas.js";
-import { createTestToneTrack } from "../../shared/test-tone.js";
 import {
   getPlaybackState,
   nextPlayback,
@@ -19,6 +18,7 @@ import {
   seekPlayback,
   setPlaybackVolume,
   speakOnDevice,
+  playTestTone,
   stopPlayback,
   updatePlaybackMode,
 } from "./playback.service.js";
@@ -102,13 +102,7 @@ export async function playbackRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({ deviceId: z.string().min(1).optional() })
       .parse(request.body ?? {});
-    const track = createTestToneTrack();
-    return playTrack({
-      url: track.url,
-      track,
-      deviceId: body.deviceId,
-      durationMs: track.durationMs,
-    });
+    return playTestTone(body.deviceId);
   });
   app.post("/pause", async () => pausePlayback());
   app.post("/resume", async () => resumePlayback());

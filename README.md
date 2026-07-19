@@ -81,7 +81,7 @@ HMUSIC_PUBLIC_BASE_URL=https://music.example.com
 
 `POST /api/v1/tracks/resolve`、`POST /api/v1/playback/play`、`POST /api/v1/playlists/:id/tracks` 都支持这种输入。服务端会把 `qq/kuwo/netease` 等来源规范化成 `tx/kw/wy`，并清理客户端临时 `url/playUrl`，最终用 `source + id` 交给 LX 插件解析。
 
-可用 `POST /api/v1/playback/test-tone` 播放内置 3 秒测试音频。它不依赖 LX 插件，适合先排查小米登录、默认设备、`HMUSIC_PUBLIC_BASE_URL` 和音频代理链路。
+可用 `POST /api/v1/playback/test-tone` 播放内置 3 秒测试音频。它不依赖 LX 插件，适合先排查小米登录、默认设备、`HMUSIC_PUBLIC_BASE_URL` 和音频代理链路。测试音与正常播放隔离：不写播放状态、不进队列（返回 `{ deviceId, deviceName }`）；部分机型（如 L05B）设备端会循环单曲列表，服务端在 3.5 秒后补发 pause+stop 掐停，不会一直响。
 
 ### 小爱音箱型号适配
 

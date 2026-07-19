@@ -965,32 +965,32 @@ describe("api contract", () => {
         headers,
       });
       expect(testTonePlayback.statusCode).toBe(200);
-      expect(testTonePlayback.json()).toEqual(
-        expect.objectContaining({
-          deviceId: "xiaomi-speaker",
-          state: "playing",
-          durationMs: 3000,
-        }),
-      );
-      expect(testTonePlayback.json().track).toEqual(
-        expect.objectContaining({
-          id: "manual:hmusic-test-tone",
-          source: "manual",
-          sourceTrackId: "hmusic-test-tone",
-          title: "HMusic Test Tone",
-        }),
-      );
-      expect(ubusCalls.slice(-3).map((item) => item.method)).toEqual([
-        "player_play_operation",
-        "player_play_operation",
-        "player_play_music",
-      ]);
+      // 测试音频与正常播放隔离：只回设备信息、不修改播放状态（不触发
+      // 队列同步/自动推进/循环，音箱播完 3 秒自然停止）。
+      expect(testTonePlayback.json()).toEqual({
+        deviceId: "xiaomi-speaker",
+        deviceName: "客厅音箱",
+      });
+      // 只发一次播放指令，无 pause/stop 前置（play_music 自带打断语义）。
+      expect(ubusCalls.at(-1)?.method).toBe("player_play_music");
       expect(ubusCalls.at(-1)?.message).toEqual(
         expect.objectContaining({
           media: "app_ios",
-          // 同上：回环 base 被实时替换为局域网 IPv4，host 不写死。
-          music: expect.stringMatching(/http:\/\/[^/]+\/api\/v1\/proxy\/audio\//),
+          // 测试音直发内置 WAV 地址（不经音频代理，无需解析直链）。
+          music: expect.stringMatching(
+            /http:\/\/[^/]+\/api\/v1\/system\/test-tone\.wav/,
+          ),
         }),
+      );
+      // 播放状态未被测试音污染：track 不是 test tone。
+      const stateAfterTone = await app.inject({
+        method: "GET",
+        url: "/api/v1/playback/state",
+        headers,
+      });
+      expect(stateAfterTone.statusCode).toBe(200);
+      expect(stateAfterTone.json().track?.id).not.toBe(
+        "manual:hmusic-test-tone",
       );
 
       const compatSettings = await app.inject({
