@@ -183,6 +183,13 @@ export async function playUrl(
   const target = await resolveTargetDevice(input.deviceId);
   const playbackUrl = createAudioProxyUrl(input.url);
   lastResolvedAt = Date.now();
+  // 新曲开播重置设备位置基准：旧曲曲末的 prev + 新曲曲头的回读位置
+  // 组合会被绕回启发式误判成「播完重播」，导致刚开播就再跳一首。
+  lastDevicePositionMs = input.positionMs ?? 0;
+  // 每次开播（含 single_loop 重播同一首）都是一个新的播放实例，递增序号。
+  // 连播去重按实例序号而非曲目 key：同曲重播序号也变，能重新连播；同一实例
+  // 内定时器与轮询只推进一次（都比对该序号）。
+  playInstanceSeq += 1;
   const isLocal = target.id === LOCAL_DEVICE_ID;
   // 带 deviceId 点播可以不经 retargetPlayback 直接换目标：旧远端设备在播必须
   // 先掐停，否则旧音箱继续响 + 新目标开播 = 双端同响。失联不阻断新播放。
@@ -243,6 +250,8 @@ export async function playUrl(
     }
   }
   persistPlaybackState();
+  // 连播主线：远端开播即按时长起定时器（本机由客户端 completed 驱动，内部会跳过）。
+  armAutoNextForCurrent();
   return playbackState;
 }
 
@@ -258,6 +267,7 @@ export async function pausePlayback(): Promise<HMusicPlaybackState> {
     state: "paused",
     updatedAt: Date.now(),
   };
+  cancelAutoNext(); // 暂停：停表，resume 时按剩余时长续表
   persistPlaybackState();
   return playbackState;
 }
@@ -298,6 +308,8 @@ export async function resumePlayback(): Promise<HMusicPlaybackState> {
     state: "playing",
     updatedAt: Date.now(),
   };
+  // 续播（未重解析分支）：按剩余时长续表，补偿暂停占用的挂钟时间。
+  armAutoNextForCurrent();
   persistPlaybackState();
   return playbackState;
 }
@@ -339,6 +351,7 @@ export async function retargetPlayback(
     updatedAt: Date.now(),
   };
   lastResolvedAt = 0; // 旧解析作废，resume 时按新设备重新解析
+  cancelAutoNext(); // 切设备转暂停：停表，新目标按播放时重新起表
   persistPlaybackState();
   return playbackState;
 }
@@ -358,6 +371,7 @@ export async function stopPlayback(): Promise<HMusicPlaybackState> {
     positionMs: 0,
     updatedAt: Date.now(),
   };
+  cancelAutoNext(); // 停止播放：停表
   persistPlaybackState();
   return playbackState;
 }
@@ -506,6 +520,24 @@ export async function seekPlayback(
     positionMs,
     updatedAt: Date.now(),
   };
+  // seek 后重置设备位置基准：从曲末 seek 回曲头，下轮回读的小位置不能
+  // 被绕回启发式误判成「播完重播」而跳歌。
+  lastDevicePositionMs = positionMs;
+  // seek 改变剩余时长：按新位置重排定时器（仅远端播放中）。
+  if (
+    target.id !== LOCAL_DEVICE_ID &&
+    playbackState.state === "playing" &&
+    playbackState.durationMs > 0 &&
+    autoNextTimer
+  ) {
+    // 仅在定时器已起时按新位置重排（保持同一播放实例序号，seek 不算新实例）。
+    scheduleAutoNext({
+      seq: autoNextSeq,
+      durationMs: playbackState.durationMs,
+      remainingMs: Math.max(0, playbackState.durationMs - positionMs),
+      startAnchorMs: Date.now() - positionMs,
+    });
+  }
   persistPlaybackState();
   return playbackState;
 }
@@ -829,6 +861,162 @@ function delay(ms: number): Promise<void> {
 // 上次轮询位置接近曲末 + 这次设备转 idle → 视为自然播完，推进队列连播。
 let lastDevicePositionMs = 0;
 
+// 连播去重按「播放实例序号」：每次 playUrl 递增 playInstanceSeq，代表一个
+// 新的播放实例（换曲、single_loop 重播、seek 后同曲都各是一次）。定时器与
+// 轮询近末检测各自捕获当时的序号，推进前比对——同一实例只推进一次，避免
+// nextPlayback 异步推进期间被并发 tick 重复触发跳两首。
+let playInstanceSeq = 0;
+let lastAdvancedSeq = -1;
+
+// 连播主线：时长定时器（对齐 本地音乐服务 / 参考实现）。
+// 多数小爱机型播完不转 idle、自循环重拉同一 URL——「等设备播完」不可靠。
+// 改为开播即按曲目时长起服务端定时器，到点直接推进队列，不问设备状态。
+// 轮询的三道启发式（idle/近末/跳回）降级为兜底：时长不准或定时器被漏时补刀。
+// 定时器与轮询都按 playInstanceSeq 去重，谁先到谁推进，不会跳两首。
+// 尾部余量：音箱实际开播比服务端下发晚，且宁可略晚切也不截歌尾。
+const AUTO_NEXT_TAIL_MS = 2000;
+let autoNextTimer: NodeJS.Timeout | undefined;
+// 定时器对应的播放实例序号、时长、开播挂钟锚点（校准用：由 position 反推 elapsed）。
+let autoNextSeq = -1;
+let autoNextStartMs = 0;
+let autoNextDurationMs = 0;
+
+function cancelAutoNext(): void {
+  if (autoNextTimer) {
+    clearTimeout(autoNextTimer);
+    autoNextTimer = undefined;
+  }
+  autoNextSeq = -1;
+  autoNextStartMs = 0;
+  autoNextDurationMs = 0;
+}
+
+// 起（或重排）时长定时器。remainingMs 为距曲末的剩余毫秒；startAnchorMs 是
+// 对应的「开播挂钟时刻」（= now - 已播毫秒），供后续校准推算 elapsed。
+function scheduleAutoNext(input: {
+  seq: number;
+  durationMs: number;
+  remainingMs: number;
+  startAnchorMs: number;
+}): void {
+  if (autoNextTimer) {
+    clearTimeout(autoNextTimer);
+    autoNextTimer = undefined;
+  }
+  autoNextSeq = input.seq;
+  autoNextDurationMs = input.durationMs;
+  autoNextStartMs = input.startAnchorMs;
+  const delayMs = Math.max(1, Math.round(input.remainingMs) + AUTO_NEXT_TAIL_MS);
+  autoNextTimer = setTimeout(() => {
+    void onAutoNextFired(input.seq);
+  }, delayMs);
+  // 定时器不该阻止进程退出（对齐看门狗/测试音 timer）。
+  autoNextTimer.unref?.();
+}
+
+// 开播成功后按曲目时长起定时器（仅远端设备；本机由客户端 completed 驱动）。
+function armAutoNextForCurrent(): void {
+  if (playbackState.deviceId === LOCAL_DEVICE_ID) {
+    cancelAutoNext();
+    return;
+  }
+  const durationMs = playbackState.durationMs;
+  if (playbackState.track === undefined || durationMs <= 0) {
+    cancelAutoNext();
+    return;
+  }
+  const positionMs = Math.max(0, playbackState.positionMs);
+  scheduleAutoNext({
+    seq: playInstanceSeq,
+    durationMs,
+    remainingMs: Math.max(0, durationMs - positionMs),
+    startAnchorMs: Date.now() - positionMs,
+  });
+}
+
+async function onAutoNextFired(firedForSeq: number): Promise<void> {
+  autoNextTimer = undefined;
+  // 定时器起后可能已暂停/停止/切设备/换曲/重播——只在仍是同一播放实例、
+  // 远端播放中、且该实例尚未被推进过时才推进。
+  if (
+    playbackState.deviceId === LOCAL_DEVICE_ID ||
+    playbackState.state !== "playing" ||
+    firedForSeq !== playInstanceSeq ||
+    firedForSeq === lastAdvancedSeq
+  ) {
+    return;
+  }
+  const queue = await getQueue();
+  if (queue.items.length === 0) return;
+  lastAdvancedSeq = firedForSeq;
+  try {
+    await nextPlayback();
+  } catch {
+    // 队列尽头（sequence/single_once）等，正常收尾。
+  }
+}
+
+// 前半段校准（参考实现 的 canCalibrateAutoNextTimer 规则）：仅播放早期允许用
+// 设备实际位置纠偏定时器起点（补偿下发/开播延迟），曲末阶段严禁——某些音箱
+// 循环重拉同一 URL 时设备位置回到开头，用它回拨会把自动切歌无限推迟。
+export function canCalibrateAutoNext(input: {
+  state: HMusicPlaybackState["state"];
+  durationMs: number;
+  elapsedSec: number;
+  devicePositionSec: number;
+}): boolean {
+  const { state, durationMs, elapsedSec, devicePositionSec } = input;
+  if (state !== "playing" || durationMs <= 0 || elapsedSec <= 0) return false;
+  const durationSec = durationMs / 1000;
+  const remainingSec = durationSec - elapsedSec;
+  // 剩余 ≤15s 或已过半：进入曲末/中段，不再校准。
+  if (remainingSec <= 15 || elapsedSec >= Math.max(45, durationSec * 0.5)) {
+    return false;
+  }
+  // 已播一段后设备又回到开头 → 自循环重拉，不用它校准。
+  if (elapsedSec > 15 && devicePositionSec < 3) return false;
+  return true;
+}
+
+// 远端音箱是否自然播完（该推进队列连播）——纯决策，抽出便于单测。
+// 三种形态（对齐老项目 HMusic 的三道防线）：
+// 关键事实：多数小爱机型播完不停（status 仍为 1），设备端自带循环从头重播，
+// 只等 idle 永远等不到。
+// A）近末主动推进：本次回读 position 已进曲末 6s 窗口且仍在播放，直接推进——
+//    不等 idle 或跳回。最可靠（老项目方案A）；代价最多提前约 6s 切歌，远胜
+//    整首不连播；短曲(≤30s)不参与避免误切。
+// B）播放中 → idle 且上次位置在曲末 15s 内（转 idle 的机型，轮询最长约 10s）；
+//    手动 stop 位置一般远离曲末，不误触发。
+// C）位置跳跃：上次贴近曲末、这次跳回曲头且仍在播放（错过 A 窗口的兜底）。
+export function detectRemoteTrackEnded(input: {
+  wasPlaying: boolean;
+  deviceState: HMusicPlaybackState["state"] | undefined;
+  durationMs: number;
+  prevPositionMs: number;
+  curPositionMs: number | undefined;
+}): boolean {
+  const { wasPlaying, deviceState, durationMs, prevPositionMs, curPositionMs } =
+    input;
+  if (!wasPlaying) return false;
+  const longEnough = durationMs > 30000;
+  const prevNearEnd = durationMs > 0 && prevPositionMs >= durationMs - 15000;
+  const hasCur = typeof curPositionMs === "number";
+
+  const endedByNearEnd =
+    deviceState === "playing" &&
+    longEnough &&
+    hasCur &&
+    curPositionMs! >= durationMs - 6000;
+  const endedByIdle = deviceState === "idle" && prevNearEnd;
+  const endedByWrap =
+    deviceState === "playing" &&
+    longEnough &&
+    prevNearEnd &&
+    hasCur &&
+    curPositionMs! <= 5000;
+  return endedByNearEnd || endedByIdle || endedByWrap;
+}
+
 // single-flight：客户端 GET /playback/state 与服务端看门狗可能同时触发回读。
 // 并发查设备除了浪费小米请求，还会让两次 refresh 各自看到 playing→idle，
 // 把 nextPlayback 触发两次导致跳两首——共享同一个 in-flight Promise 杜绝该竞态。
@@ -876,17 +1064,59 @@ async function doRefreshPlaybackStateFromDevice(): Promise<boolean> {
       updatedAt: Date.now(),
     };
 
-    // 自动连播：播放中 → idle，且上次位置在曲末 15s 内（轮询间隔最长约 10s）。
-    // 手动 stop 时位置一般远离曲末，不会误触发；队列尽头由 nextPlayback 抛错收尾。
-    const duration = playbackState.durationMs;
+    // 前半段校准（参考实现 规则）：定时器起点按开播挂钟推算，但下发/开播有
+    // 延迟。播放早期用设备实际位置纠偏定时器；曲末阶段严禁回拨（自循环重拉
+    // 会把切歌无限推迟）。偏差 >3s 才重排，避免每轮抖动。
     if (
-      wasPlaying &&
-      status.state === "idle" &&
-      duration > 0 &&
-      prevPositionMs >= duration - 15000
+      autoNextTimer &&
+      typeof status.positionMs === "number" &&
+      autoNextStartMs > 0
     ) {
+      const devicePositionMs = status.positionMs;
+      const assumedElapsedMs = Date.now() - autoNextStartMs;
+      const driftMs = Math.abs(devicePositionMs - assumedElapsedMs);
+      const canCalibrate = canCalibrateAutoNext({
+        state: playbackState.state,
+        durationMs: autoNextDurationMs,
+        elapsedSec: assumedElapsedMs / 1000,
+        devicePositionSec: devicePositionMs / 1000,
+      });
+      if (canCalibrate && driftMs > 3000) {
+        scheduleAutoNext({
+          seq: autoNextSeq,
+          durationMs: autoNextDurationMs,
+          remainingMs: Math.max(0, autoNextDurationMs - devicePositionMs),
+          startAnchorMs: Date.now() - devicePositionMs,
+        });
+      }
+    }
+
+    // 自动连播有三种自然播完形态（对齐老项目 HMusic 的三道防线）：
+    // 关键事实：多数小爱机型播完不停（status 仍为 1），设备端自带循环从头
+    // 重播——只等 idle 永远等不到，连播失灵。
+    // A）近末主动推进：本次回读 position 已进曲末 6s 窗口且仍在播放，直接
+    //    推进队列——不等设备 idle 或跳回。这是最可靠的一条（老项目方案A）。
+    //    代价是最多提前约 6s 切歌，远胜整首不连播；短曲(≤30s)不参与，避免误切。
+    // B）播放中 → idle，且上次位置在曲末 15s 内（转 idle 的机型，轮询最长约 10s）；
+    //    手动 stop 时位置一般远离曲末，不会误触发。
+    // C）位置跳跃：上次贴近曲末、这次跳回曲头且仍在播放（错过 A 窗口时的兜底）。
+    // 三条都靠 playInstanceSeq 去重，同一实例只推进一次；队列尽头由
+    // nextPlayback 抛错收尾。
+    const seq = playInstanceSeq;
+    const shouldAdvance =
+      detectRemoteTrackEnded({
+        wasPlaying,
+        deviceState: status.state,
+        durationMs: playbackState.durationMs,
+        prevPositionMs,
+        curPositionMs: status.positionMs,
+      }) &&
+      playbackState.track !== undefined &&
+      seq !== lastAdvancedSeq;
+    if (shouldAdvance) {
       const queue = await getQueue();
       if (queue.items.length > 0) {
+        lastAdvancedSeq = seq;
         try {
           await nextPlayback();
         } catch {
