@@ -837,6 +837,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 
 .kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.kv-actions { display: flex; align-items: center; gap: 8px; }
 
 /* ============ 搜索页 / 曲目列表 ============ */
 .search-bar { display: flex; gap: 8px; }

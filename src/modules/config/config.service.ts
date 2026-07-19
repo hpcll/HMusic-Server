@@ -28,6 +28,9 @@ export type RuntimeConfig = {
   // 补充内置 player_play_music 白名单的自定义小爱音箱型号（大写，如 "L20A"）。
   // 用于覆盖内置表未收录、直连播放静音的新机型。
   extraPlayMusicModels: string[];
+  // 音箱播放前语音播报歌名（「即将播放 XX」）：仅远端小爱设备生效，
+  // 播报失败不阻断播放。默认关闭（播报会拖慢开播 2-4 秒）。
+  announceTracks: boolean;
 };
 
 export const defaultRuntimeConfig: RuntimeConfig = {
@@ -38,6 +41,7 @@ export const defaultRuntimeConfig: RuntimeConfig = {
   manualTracks: [],
   lxPlugins: [],
   extraPlayMusicModels: [],
+  announceTracks: false,
 };
 
 const configKey = "runtime";

@@ -8,6 +8,7 @@ import {
 } from "../../db/schema.js";
 import { AppError } from "../../shared/errors.js";
 import { decryptSecret, encryptSecret } from "../../shared/secrets.js";
+import { kvGet, kvSet } from "../../db/kv.js";
 import { upsertDevice } from "../devices/devices.service.js";
 import {
   completeXiaomiIdentityChallenge,
@@ -15,6 +16,7 @@ import {
   createXiaomiDeviceId,
   fetchXiaomiDevices,
   loginXiaomiAccount,
+  loginXiaomiMiioWithPassToken,
   sendXiaomiIdentitySms,
   sendXiaomiUbusRequest,
   startXiaomiIdentityChallenge,
@@ -22,6 +24,7 @@ import {
   waitXiaomiQrLogin,
   type XiaomiIdentityChallengeState,
   type XiaomiDevice,
+  type XiaomiMiioSession,
   type XiaomiSession,
 } from "./xiaomi.client.js";
 import {
@@ -522,6 +525,13 @@ async function saveMiSession(
   account: string,
   session: XiaomiSession,
 ): Promise<void> {
+  // passToken（长期凭据）存 kv：mi_accounts 表无此列，走 kv 免建表迁移。
+  // 用于静默换 miio 域（sid=xiaomiio）token 做 miot TTS。
+  kvSet("mi.passTokenEnc", {
+    value: session.passToken ? encryptSecret(session.passToken) : null,
+  });
+  // 换号/重登后旧 miio 会话作废。
+  cachedMiioSession = undefined;
   const now = Date.now();
   await db
     .insert(miAccounts)
@@ -596,7 +606,8 @@ export async function getStoredMiSession(): Promise<XiaomiSession> {
       .limit(1)
   )[0];
   if (!account || account.isLoggedIn !== 1) {
-    throw new AppError("MI_ACCOUNT_NOT_LOGGED_IN", "小米账号尚未登录", 401);
+    // 注意：客户端把 401 当 HMusic 会话失效并登出，小米侧状态一律用 409/502。
+    throw new AppError("MI_ACCOUNT_NOT_LOGGED_IN", "小米账号尚未登录", 409);
   }
   const serviceToken = decryptSecret(account.serviceTokenEnc);
   const userId = decryptSecret(account.userIdEnc);
@@ -604,7 +615,7 @@ export async function getStoredMiSession(): Promise<XiaomiSession> {
     throw new AppError(
       "MI_SESSION_INVALID",
       "小米登录会话无效，请重新登录",
-      401,
+      409,
     );
   }
 
@@ -696,6 +707,15 @@ function isUnauthorizedDeviceListError(error: unknown): boolean {
 }
 
 async function saveDevices(devices: XiaomiDevice[]): Promise<void> {
+  // MiNA deviceID → 数字 miotDID 映射存 kv：miot action（TTS）用 did 寻址，
+  // devices 表无此列，走 kv 免建表迁移。
+  const didMap: Record<string, string> = {
+    ...(kvGet<Record<string, string>>("mi.miotDids") ?? {}),
+  };
+  for (const device of devices) {
+    didMap[device.deviceId] = device.did;
+  }
+  kvSet("mi.miotDids", didMap);
   for (const [index, device] of devices.entries()) {
     await upsertDevice({
       id: device.deviceId,
@@ -707,6 +727,39 @@ async function saveDevices(devices: XiaomiDevice[]): Promise<void> {
       capabilities: inferCapabilities(device.hardware),
     });
   }
+}
+
+// 查设备的数字 miotDID（miot action 寻址用）；未刷新过设备列表时为空。
+export function getMiotDid(deviceId: string): string | undefined {
+  return kvGet<Record<string, string>>("mi.miotDids")?.[deviceId];
+}
+
+// miio 域会话内存缓存：passToken 换 token 有网络成本，进程内复用；
+// 401 时由调用方 invalidateMiioSession() 后重试一次。
+let cachedMiioSession: XiaomiMiioSession | undefined;
+
+export function invalidateMiioSession(): void {
+  cachedMiioSession = undefined;
+}
+
+export async function getMiioSession(): Promise<XiaomiMiioSession> {
+  if (cachedMiioSession) return cachedMiioSession;
+  const session = await getStoredMiSession();
+  const stored = kvGet<{ value: string | null }>("mi.passTokenEnc");
+  const passToken = stored?.value ? decryptSecret(stored.value) : undefined;
+  if (!passToken) {
+    throw new AppError(
+      "MI_MIIO_PASS_TOKEN_MISSING",
+      "缺少小米长期凭据，请重新登录小米账号后再试语音播报",
+      409,
+    );
+  }
+  cachedMiioSession = await loginXiaomiMiioWithPassToken({
+    passToken,
+    userId: session.userId,
+    deviceId: session.deviceId,
+  });
+  return cachedMiioSession;
 }
 
 function inferCapabilities(hardware: string) {

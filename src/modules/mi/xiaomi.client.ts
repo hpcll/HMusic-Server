@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { AppError } from "../../shared/errors.js";
 import { moduleLogger } from "../../shared/logger.js";
 
@@ -20,6 +20,18 @@ export type XiaomiSession = {
   serviceToken: string;
   userId: string;
   ssecurity?: string;
+  deviceId: string;
+  // 长期凭据：用于静默换取其他 sid scope 的 serviceToken（如 miio 域 TTS）。
+  // 登录时能拿到就带上；导入旧凭据等路径可能没有。
+  passToken?: string;
+};
+
+// miio 域（api.io.mi.com）会话：sid=xiaomiio 的 serviceToken + 同次登录的
+// ssecurity（签名密钥，与 micoapi 的不通用）。miot action（TTS 等）专用。
+export type XiaomiMiioSession = {
+  serviceToken: string;
+  ssecurity: string;
+  userId: string;
   deviceId: string;
 };
 
@@ -132,7 +144,7 @@ export async function loginXiaomiAccount(input: {
     throw new AppError(
       "MI_LOGIN_FAILED",
       data.desc || data.description || "小米账号登录失败",
-      401,
+      502,
       {
         code: data.code,
       },
@@ -241,6 +253,7 @@ export async function loginXiaomiAccount(input: {
     userId,
     ssecurity: data.ssecurity,
     deviceId,
+    passToken: asString(data.passToken),
   };
 }
 
@@ -418,6 +431,8 @@ export async function waitXiaomiQrLogin(input: {
         userId,
         ssecurity: data.ssecurity,
         deviceId: input.deviceId,
+        // passToken 顺手带回：miio 域 TTS 靠它静默换 xiaomiio token。
+        passToken: asString(data.passToken),
       };
     } catch (error) {
       log.warn(
@@ -854,7 +869,7 @@ async function loginXiaomiAccountWithPassToken(input: {
     throw new AppError(
       "MI_PASS_TOKEN_LOGIN_FAILED",
       data.desc || data.description || "小米网页凭据登录失败",
-      401,
+      502,
       {
         code: data.code,
       },
@@ -873,7 +888,138 @@ async function loginXiaomiAccountWithPassToken(input: {
     userId,
     ssecurity: data.ssecurity,
     deviceId: input.deviceId,
+    passToken: input.passToken,
   };
+}
+
+// 用 passToken 静默换取 miio 域（sid=xiaomiio）会话：serviceToken 与签名用
+// ssecurity 都是本次登录专属，与 micoapi 的不通用。miot action（TTS）专用。
+export async function loginXiaomiMiioWithPassToken(input: {
+  passToken: string;
+  userId: string;
+  deviceId: string;
+}): Promise<XiaomiMiioSession> {
+  const response = await fetch(
+    "https://account.xiaomi.com/pass/serviceLogin?sid=xiaomiio&_json=true",
+    {
+      headers: {
+        ...baseHeaders(input.deviceId),
+        Cookie: `passToken=${input.passToken}; userId=${input.userId}; sdkVersion=3.9; deviceId=${input.deviceId}`,
+      },
+    },
+  );
+  if (!response.ok) {
+    throw new AppError("MI_MIIO_LOGIN_FAILED", "小米 miio 登录失败", 502, {
+      statusCode: response.status,
+    });
+  }
+  const rawBody = await response.text();
+  const data = parseXiaomiJson<XiaomiLoginResponse>(rawBody);
+  const nonce = extractBigIntField(rawBody, "nonce") ?? data.nonce;
+  if (data.code !== 0 || !data.location || !data.ssecurity || !nonce) {
+    throw new AppError(
+      "MI_MIIO_LOGIN_FAILED",
+      data.desc || data.description || "小米 miio 登录失败，请重新登录小米账号",
+      502,
+      { code: data.code },
+    );
+  }
+  const serviceToken = await exchangeServiceToken(
+    data.location,
+    nonce,
+    data.ssecurity,
+    `passToken=${input.passToken}; userId=${input.userId}`,
+    "passToken",
+  );
+  return {
+    serviceToken,
+    ssecurity: data.ssecurity,
+    userId: asString(data.userId) || input.userId,
+    deviceId: input.deviceId,
+  };
+}
+
+// miio 域请求签名（对齐 miservice sign_data）：
+//   nonce = base64(8 随机字节 + 4 字节 time/60)
+//   signedNonce = base64(sha256(b64d(ssecurity) + b64d(nonce)))
+//   signature = base64(hmac-sha256(key=b64d(signedNonce), uri&snonce&nonce&data=json))
+function signMiioData(
+  uri: string,
+  dataJson: string,
+  ssecurity: string,
+): { _nonce: string; data: string; signature: string } {
+  const minutes = Math.floor(Date.now() / 60000);
+  const timeBuf = Buffer.alloc(4);
+  timeBuf.writeUInt32BE(minutes);
+  const nonce = Buffer.concat([randomBytes(8), timeBuf]).toString("base64");
+  const signedNonce = createHash("sha256")
+    .update(Buffer.from(ssecurity, "base64"))
+    .update(Buffer.from(nonce, "base64"))
+    .digest("base64");
+  const msg = [uri, signedNonce, nonce, `data=${dataJson}`].join("&");
+  const signature = createHmac("sha256", Buffer.from(signedNonce, "base64"))
+    .update(msg)
+    .digest("base64");
+  return { _nonce: nonce, data: dataJson, signature };
+}
+
+const miioUserAgent =
+  "iOS-14.4-6.0.103-iPhone12,3--D7744744F7AF32F0544445285880DD63E47D9BE9-8816080-84A3F44E137B71AE-iPhone";
+
+// 执行 miot spec action（POST api.io.mi.com/app/miotspec/action）。
+// did 是数字 miotDID（不是 MiNA deviceID），siid/aiid 按机型映射。
+export async function sendXiaomiMiotAction(input: {
+  miioSession: XiaomiMiioSession;
+  did: string;
+  siid: number;
+  aiid: number;
+  args: unknown[];
+}): Promise<void> {
+  const uri = "/miotspec/action";
+  const dataJson = JSON.stringify({
+    params: {
+      did: input.did,
+      siid: input.siid,
+      aiid: input.aiid,
+      in: input.args,
+    },
+  });
+  const signed = signMiioData(uri, dataJson, input.miioSession.ssecurity);
+  const response = await fetch(`https://api.io.mi.com/app${uri}`, {
+    method: "POST",
+    headers: {
+      "User-Agent": miioUserAgent,
+      "x-xiaomi-protocal-flag-cli": "PROTOCAL-HTTP2",
+      "Content-Type": "application/x-www-form-urlencoded",
+      Cookie: [
+        `userId=${input.miioSession.userId}`,
+        `serviceToken=${input.miioSession.serviceToken}`,
+        `PassportDeviceId=${input.miioSession.deviceId}`,
+      ].join("; "),
+    },
+    body: new URLSearchParams(signed),
+  });
+  if (response.status === 401) {
+    // 401 语义仅内部用（code 匹配后静默重登一次），状态码用 502 防客户端误判登出。
+    throw new AppError("MI_MIIO_UNAUTHORIZED", "miio 会话已过期", 502);
+  }
+  if (!response.ok) {
+    throw new AppError("MI_MIOT_ACTION_FAILED", "miot action 请求失败", 502, {
+      statusCode: response.status,
+    });
+  }
+  const payload = (await response.json()) as {
+    code?: number;
+    message?: string;
+  };
+  if (payload.code !== 0) {
+    throw new AppError(
+      "MI_MIOT_ACTION_FAILED",
+      `miot action 失败：${payload.message || `code ${payload.code}`}`,
+      502,
+      { code: payload.code },
+    );
+  }
 }
 
 async function requestIdentityVerificationUrl(input: {

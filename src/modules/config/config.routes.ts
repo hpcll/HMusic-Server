@@ -56,6 +56,7 @@ const configPatchSchema = z
           .transform((value) => value.toUpperCase()),
       )
       .optional(),
+    announceTracks: z.boolean().optional(),
   })
   .strict();
 

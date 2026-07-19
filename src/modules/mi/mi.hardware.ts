@@ -24,6 +24,41 @@ const needPlayMusicApi = new Set([
   "L17A",
 ]);
 
+// 需要走 miot spec action 播报 TTS 的机型 → "siid-aiid"（对齐 本地音乐服务
+// TTS_COMMAND）：这些机型的 MiNA ubus mibrain/text_to_speech 不生效，必须
+// 用 miio 域的 /miotspec/action。不在表内的机型仍走 MiNA ubus。
+const ttsMiotCommand: Record<string, string> = {
+  OH2: "5-3",
+  OH2P: "7-3",
+  LX06: "5-1",
+  S12: "5-1",
+  L15A: "7-3",
+  LX5A: "5-1",
+  LX01: "5-1",
+  LX05: "5-1",
+  X10A: "7-3",
+  L17A: "7-3",
+  ASX4B: "5-3",
+  L06A: "5-1",
+  L05B: "5-3",
+  L05C: "5-3",
+  X6A: "7-3",
+  X08E: "7-3",
+  L09A: "3-1",
+  LX04: "5-1",
+};
+
+// 机型的 miot TTS action（siid/aiid），无映射时返回 undefined（走 MiNA ubus）。
+export function ttsMiotAction(
+  hardware: string | undefined,
+): { siid: number; aiid: number } | undefined {
+  const command = ttsMiotCommand[normalizeHardware(hardware)];
+  if (!command) return undefined;
+  const [siid, aiid] = command.split("-").map(Number);
+  if (!Number.isInteger(siid) || !Number.isInteger(aiid)) return undefined;
+  return { siid, aiid };
+}
+
 const noSeekSupport = new Set(["OH2P", "OH2"]);
 const unreliablePlayStatus = new Set(["OH2P", "OH2", "S12A"]);
 const androidMediaContext = new Set(["S12A"]);

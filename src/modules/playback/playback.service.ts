@@ -12,9 +12,19 @@ import {
   createMiAudioId,
   needsPlayMusicApi,
   playbackMediaContext,
+  ttsMiotAction,
 } from "../mi/mi.hardware.js";
-import { getStoredMiSession } from "../mi/mi.service.js";
-import { sendXiaomiTts, sendXiaomiUbusRequest } from "../mi/xiaomi.client.js";
+import {
+  getMiioSession,
+  getMiotDid,
+  getStoredMiSession,
+  invalidateMiioSession,
+} from "../mi/mi.service.js";
+import {
+  sendXiaomiMiotAction,
+  sendXiaomiTts,
+  sendXiaomiUbusRequest,
+} from "../mi/xiaomi.client.js";
 import { createAudioProxyUrl } from "../proxy/audio-proxy.service.js";
 import {
   getQueue,
@@ -179,6 +189,7 @@ export async function playUrl(
     await sendPlayerOperation(target.id, "pause");
     await sendPlayerOperation(target.id, "stop");
     await delay(500);
+    await announceTrackIfEnabled(target, input.track);
     await sendDevicePlayUrl({
       deviceId: target.id,
       hardware: target.type,
@@ -566,6 +577,46 @@ export async function speakOnDevice(
       409,
     );
   }
+  // 机型分流（对齐 本地音乐服务）：TTS_COMMAND 表内机型的 MiNA ubus 播报不生效，
+  // 必须走 miio 域 miot action（siid/aiid 按机型），表外机型仍走 MiNA ubus。
+  const miot = ttsMiotAction(target.type);
+  const did = miot ? getMiotDid(target.id) : undefined;
+  if (miot && did) {
+    // miot in 参数不能带空格（对齐 本地音乐服务 的 value.replace(" ", ",")）。
+    const value = text.replace(/ /g, ",");
+    try {
+      await sendXiaomiMiotAction({
+        miioSession: await getMiioSession(),
+        did,
+        siid: miot.siid,
+        aiid: miot.aiid,
+        args: [value],
+      });
+      return { deviceId: target.id, deviceName: target.name };
+    } catch (error) {
+      // miio 会话过期重登一次。
+      if (error instanceof AppError && error.code === "MI_MIIO_UNAUTHORIZED") {
+        invalidateMiioSession();
+        await sendXiaomiMiotAction({
+          miioSession: await getMiioSession(),
+          did,
+          siid: miot.siid,
+          aiid: miot.aiid,
+          args: [value],
+        });
+        return { deviceId: target.id, deviceName: target.name };
+      }
+      // 缺 passToken 必须如实上抛（重新登录小米账号才能拿到）：该机型的
+      // MiNA 回退已知无效，静默回退=界面「已下发」但音箱永远不响。
+      if (
+        error instanceof AppError &&
+        error.code === "MI_MIIO_PASS_TOKEN_MISSING"
+      ) {
+        throw error;
+      }
+      // 其余失败（网络/miot 未知错）降级 MiNA ubus 尽力而为。
+    }
+  }
   const session = await getStoredMiSession();
   await sendXiaomiTts({ session, deviceId: target.id, text });
   return { deviceId: target.id, deviceName: target.name };
@@ -607,6 +658,26 @@ export async function playTestTone(
   }, 3500);
   timer.unref?.();
   return { deviceId: target.id, deviceName: target.name };
+}
+
+// 开播前语音播报歌名（announceTracks 开关，默认关）：播报是点缀，任何失败
+// 都吞掉不阻断播放；播完等 1s 让音箱吐完语音再收到 play_url，避免抢占截断。
+async function announceTrackIfEnabled(
+  target: Awaited<ReturnType<typeof resolveTargetDevice>>,
+  track: HMusicTrack | undefined,
+): Promise<void> {
+  if (!track?.title) return;
+  try {
+    const { announceTracks } = await getRuntimeConfig();
+    if (!announceTracks) return;
+    const text = track.artist
+      ? `即将播放 ${track.artist} 的 ${track.title}`
+      : `即将播放 ${track.title}`;
+    await speakOnDevice(text, target.id);
+    await delay(1000 + Math.min(text.length * 250, 4000));
+  } catch {
+    // 播报失败不影响播放。
+  }
 }
 
 async function sendPlayerOperation(

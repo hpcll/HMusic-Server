@@ -9,6 +9,10 @@ export const MiAccountSection = {
     const mi = ref(null);
     const tab = ref("qr");
 
+    // 已登录时是否展开「更换账号」面板（Server 单账号模型：再登录是替换不是新增）。
+    // loadStatus 每次成功都会收拢，登录/退出后自动回到状态卡视图。
+    const changing = ref(false);
+
     // ── 扫码通道状态 ──
     const qr = ref(null); // {qrId, loginUrl, expiresAt}
     const qrSvg = ref("");
@@ -34,9 +38,25 @@ export const MiAccountSection = {
     async function loadStatus() {
       try {
         mi.value = await api("/mi/status");
+        // 每次确认状态都收起「更换账号」：三通道登录成功/退出后回到默认视图。
+        changing.value = false;
       } catch (error) {
         toast(error.message, "error");
       }
+    }
+
+    // 翻转「更换账号」面板。开合都复位三通道：重开从干净扫码页开始，
+    // 收起同时停掉遗留的扫码轮询（否则折叠后仍可能被扫码顶号）。
+    function toggleChanging() {
+      changing.value = !changing.value;
+      stopQrTimers();
+      qr.value = null;
+      qrSvg.value = "";
+      qrStatus.value = "idle";
+      qrMessage.value = "";
+      qrRemain.value = "";
+      tab.value = "qr";
+      challenge.value = null;
     }
 
     // ===== 扫码 =====
@@ -211,9 +231,11 @@ export const MiAccountSection = {
       { key: "import", label: "导入会话" },
     ];
 
-    return () =>
-      h("div", { class: "section-body" }, [
-        // 状态卡
+    return () => {
+      // 未登录恒展开三通道；已登录默认只留状态卡，「更换账号」按需展开。
+      const showPanel = !mi.value?.loggedIn || changing.value;
+      return h("div", { class: "section-body" }, [
+        // 状态卡：更换是低危动作用 ghost 灰阶；退出是破坏动作保持 danger。
         h("section", { class: "card" }, [
           mi.value?.loggedIn
             ? h("div", { class: "kv" }, [
@@ -221,26 +243,38 @@ export const MiAccountSection = {
                   h("span", { class: "dot dot-playing" }),
                   `已登录 ${mi.value.accountMasked || ""}`,
                 ]),
-                h("button", { class: "danger-btn", onClick: logoutMi }, "退出登录"),
+                h("div", { class: "kv-actions" }, [
+                  h("button", { class: "ghost-btn", onClick: toggleChanging },
+                    changing.value ? "取消更换" : "更换账号"),
+                  h("button", { class: "danger-btn", onClick: logoutMi }, "退出登录"),
+                ]),
               ])
             : h("div", null, [h("span", { class: "dot dot-idle" }), "未登录小米账号"]),
         ]),
 
-        // 通道 Tabs
-        h("div", { class: "tabs" },
-          TABS.map((t) =>
-            h("button", {
-              key: t.key,
-              class: ["tab", { active: tab.value === t.key }],
-              onClick: () => (tab.value = t.key),
-            }, t.label),
-          ),
-        ),
+        // 单账号模型：新登录会顶掉当前账号，展开时先把替换语义说清。
+        showPanel && mi.value?.loggedIn
+          ? h("p", { class: "hint" }, "登录新账号后将替换当前账号。")
+          : null,
 
-        tab.value === "qr" ? renderQrTab() : null,
-        tab.value === "password" ? renderPasswordTab() : null,
-        tab.value === "import" ? renderImportTab() : null,
+        // 通道 Tabs
+        showPanel
+          ? h("div", { class: "tabs" },
+              TABS.map((t) =>
+                h("button", {
+                  key: t.key,
+                  class: ["tab", { active: tab.value === t.key }],
+                  onClick: () => (tab.value = t.key),
+                }, t.label),
+              ),
+            )
+          : null,
+
+        showPanel && tab.value === "qr" ? renderQrTab() : null,
+        showPanel && tab.value === "password" ? renderPasswordTab() : null,
+        showPanel && tab.value === "import" ? renderImportTab() : null,
       ]);
+    };
 
     function renderQrTab() {
       return h("section", { class: "card qr-card" }, [
