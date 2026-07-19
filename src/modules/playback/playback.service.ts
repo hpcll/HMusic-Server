@@ -184,6 +184,22 @@ export async function playUrl(
   const playbackUrl = createAudioProxyUrl(input.url);
   lastResolvedAt = Date.now();
   const isLocal = target.id === LOCAL_DEVICE_ID;
+  // 带 deviceId 点播可以不经 retargetPlayback 直接换目标：旧远端设备在播必须
+  // 先掐停，否则旧音箱继续响 + 新目标开播 = 双端同响。失联不阻断新播放。
+  const previousId = playbackState.deviceId;
+  if (
+    previousId &&
+    previousId !== LOCAL_DEVICE_ID &&
+    previousId !== target.id &&
+    playbackState.state === "playing"
+  ) {
+    try {
+      await sendPlayerOperation(previousId, "pause");
+      await sendPlayerOperation(previousId, "stop");
+    } catch {
+      // 旧设备失联不阻断
+    }
+  }
   // 本机播放：不发小米指令，服务端只记账，音频由浏览器 <audio> 拉 streamUrl。
   if (!isLocal) {
     await sendPlayerOperation(target.id, "pause");

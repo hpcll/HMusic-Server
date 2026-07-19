@@ -707,7 +707,11 @@ describe("api contract", () => {
         { timeMs: 1000, text: "译文一" },
       ]);
 
-      const ubusCalls: Array<{ method: string | null; message: unknown }> = [];
+      const ubusCalls: Array<{
+        deviceId: string | null;
+        method: string | null;
+        message: unknown;
+      }> = [];
       let smsSendStatus: "ok" | "limited" = "ok";
       let webVerified = false;
       let forceDeviceListUnauthorized = false;
@@ -865,6 +869,7 @@ describe("api contract", () => {
             const method = body.get("method");
             const rawMessage = body.get("message");
             ubusCalls.push({
+              deviceId: body.get("deviceId"),
               method,
               message: rawMessage ? JSON.parse(rawMessage) : undefined,
             });
@@ -1325,6 +1330,38 @@ describe("api contract", () => {
       });
       expect(resumed.statusCode).toBe(200);
       expect(resumed.json().state).toBe("playing");
+
+      // 双端同响回归：音箱正在播时点播到本机，playUrl 必须先掐停旧音箱
+      //（pause+stop），否则音箱继续响旧歌 + 本机开播新歌。
+      const ubusCountBeforeLocalPlay = ubusCalls.length;
+      const playOnLocal = await app.inject({
+        method: "POST",
+        url: "/api/v1/playback/play",
+        headers,
+        payload: {
+          // 复用队列里已有的曲目（带 queueIndex），不给后续队列长度断言添项。
+          url: "https://example.com/local.mp3",
+          track: lxSearch.json().tracks[0],
+          queueIndex: 0,
+          deviceId: "local-browser",
+        },
+      });
+      expect(playOnLocal.statusCode).toBe(200);
+      expect(playOnLocal.json()).toEqual(
+        expect.objectContaining({
+          deviceId: "local-browser",
+          state: "playing",
+          streamUrl: expect.stringContaining("/api/v1/proxy/audio/"),
+        }),
+      );
+      expect(
+        ubusCalls
+          .slice(ubusCountBeforeLocalPlay)
+          .map((item) => [item.deviceId, item.method, (item.message as { action?: string })?.action]),
+      ).toEqual([
+        ["xiaomi-speaker", "player_play_operation", "pause"],
+        ["xiaomi-speaker", "player_play_operation", "stop"],
+      ]);
 
       const activeVerificationStart = await app.inject({
         method: "POST",
