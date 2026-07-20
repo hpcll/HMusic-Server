@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canCalibrateAutoNext } from "../../src/modules/playback/playback.service.js";
 
-// 连播时长定时器的前半段校准窗口（参考实现 canCalibrateAutoNextTimer 规则）。
+// 连播时长定时器的前半段校准窗口。
 // 以 210s 曲为基准。
 describe("canCalibrateAutoNext", () => {
   const dur = 210000;

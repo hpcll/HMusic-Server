@@ -7,3 +7,7 @@ data/
 .idea/
 .claude/
 hmusic-deploy.tar.gz
+
+# 内部开发文档，不公开
+docs/
+web/vendor/README.md

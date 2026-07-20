@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 // 需要使用 player_play_music 接口的设备型号（精确匹配）。
-// 对齐活跃项目 参考实现 的 NEED_USE_PLAY_MUSIC_API 白名单：
 // 这些型号不支持标准 player_play_url，误用会导致「连上但静音」。
 const needPlayMusicApi = new Set([
   "X08C",
@@ -24,8 +23,8 @@ const needPlayMusicApi = new Set([
   "L17A",
 ]);
 
-// 需要走 miot spec action 播报 TTS 的机型 → "siid-aiid"（对齐 本地音乐服务
-// TTS_COMMAND）：这些机型的 MiNA ubus mibrain/text_to_speech 不生效，必须
+// 需要走 miot spec action 播报 TTS 的机型 → "siid-aiid"：
+// 这些机型的 MiNA ubus mibrain/text_to_speech 不生效，必须
 // 用 miio 域的 /miotspec/action。不在表内的机型仍走 MiNA ubus。
 const ttsMiotCommand: Record<string, string> = {
   OH2: "5-3",

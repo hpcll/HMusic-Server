@@ -381,7 +381,7 @@ export async function retargetPlayback(
 export async function stopPlayback(): Promise<HMusicPlaybackState> {
   const target = await resolveTargetDevice(playbackState.deviceId);
   if (target.id !== LOCAL_DEVICE_ID) {
-    // 部分小爱型号单独调用 stop 不会真正停止，先 pause 再 stop（对齐 参考实现）。
+    // 部分小爱型号单独调用 stop 不会真正停止，先 pause 再 stop。
     await sendPlayerOperation(target.id, "pause");
     await sendPlayerOperation(target.id, "stop");
   }
@@ -647,12 +647,12 @@ export async function speakOnDevice(
       409,
     );
   }
-  // 机型分流（对齐 本地音乐服务）：TTS_COMMAND 表内机型的 MiNA ubus 播报不生效，
+  // 机型分流：TTS_COMMAND 表内机型的 MiNA ubus 播报不生效，
   // 必须走 miio 域 miot action（siid/aiid 按机型），表外机型仍走 MiNA ubus。
   const miot = ttsMiotAction(target.type);
   const did = miot ? getMiotDid(target.id) : undefined;
   if (miot && did) {
-    // miot in 参数不能带空格（对齐 本地音乐服务 的 value.replace(" ", ",")）。
+    // miot in 参数不能带空格，用逗号替换空格。
     const value = text.replace(/ /g, ",");
     try {
       await sendXiaomiMiotAction({
@@ -890,7 +890,7 @@ let lastDevicePositionMs = 0;
 let playInstanceSeq = 0;
 let lastAdvancedSeq = -1;
 
-// 连播主线：时长定时器（对齐 本地音乐服务 / 参考实现）。
+// 连播主线：时长定时器。
 // 多数小爱机型播完不转 idle、自循环重拉同一 URL——「等设备播完」不可靠。
 // 改为开播即按曲目时长起服务端定时器，到点直接推进队列，不问设备状态。
 // 轮询的三道启发式（idle/近末/跳回）降级为兜底：时长不准或定时器被漏时补刀。
@@ -978,7 +978,7 @@ async function onAutoNextFired(firedForSeq: number): Promise<void> {
   }
 }
 
-// 前半段校准（参考实现 的 canCalibrateAutoNextTimer 规则）：仅播放早期允许用
+// 前半段校准规则：仅播放早期允许用
 // 设备实际位置纠偏定时器起点（补偿下发/开播延迟），曲末阶段严禁——某些音箱
 // 循环重拉同一 URL 时设备位置回到开头，用它回拨会把自动切歌无限推迟。
 export function canCalibrateAutoNext(input: {
@@ -1086,7 +1086,7 @@ async function doRefreshPlaybackStateFromDevice(): Promise<boolean> {
       updatedAt: Date.now(),
     };
 
-    // 前半段校准（参考实现 规则）：定时器起点按开播挂钟推算，但下发/开播有
+    // 前半段校准：定时器起点按开播挂钟推算，但下发/开播有
     // 延迟。播放早期用设备实际位置纠偏定时器；曲末阶段严禁回拨（自循环重拉
     // 会把切歌无限推迟）。偏差 >3s 才重排，避免每轮抖动。
     if (

@@ -13,7 +13,7 @@ const identityUserAgent =
 const identityWebUserAgent =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
-// 跟随验证完成重定向链时的最大跳数（对齐 参考实现 的 MAX_REDIRECTS）。
+// 跟随验证完成重定向链时的最大跳数。
 const MAX_IDENTITY_REDIRECTS = 10;
 
 export type XiaomiSession = {
@@ -311,7 +311,7 @@ export type XiaomiQrLoginStart = {
   deviceId: string;
 };
 
-// 扫码登录第一步（对齐 本地音乐服务 的 longPolling/loginUrl 流程）：
+// 扫码登录第一步（longPolling/loginUrl 流程）：
 // 无凭据请求 serviceLogin 拿登录页参数，再换取二维码内容与长轮询地址。
 export async function startXiaomiQrLogin(input: {
   deviceId?: string;
@@ -568,11 +568,11 @@ export async function completeXiaomiIdentityChallenge(input: {
   );
 
   // 跟随验证完成后的重定向链，把 passToken / userId / serviceToken 收进 cookie jar。
-  // 这是 参考实现 的做法：不再死磕 STS 地址，优先用 passToken 直接换 serviceToken。
+  // 不再死磕 STS 地址，优先用 passToken 直接换 serviceToken。
   const location = asString(data.location);
   await followIdentityRedirects(input.state, location);
 
-  // 路径 A（首选，对齐 参考实现）：passToken → serviceLogin → serviceToken，完全绕开 STS。
+  // 路径 A（首选）：passToken → serviceLogin → serviceToken，完全绕开 STS。
   const passToken = cookieFromState(input.state, "passToken");
   const jarUserId = cookieFromState(input.state, "userId");
   if (passToken && jarUserId) {
@@ -1126,7 +1126,7 @@ export async function fetchXiaomiDevices(
 }
 
 // 同一小爱音箱的 ubus 请求串行执行，避免快速切歌 / 连续操作时并发打架
-// （对齐 参考实现 的 ubusQueues）。key 为 deviceId，value 为该设备的请求尾链。
+// key 为 deviceId，value 为该设备的请求尾链。
 const ubusQueues = new Map<string, Promise<unknown>>();
 
 export async function sendXiaomiUbusRequest(input: {
@@ -1216,7 +1216,7 @@ export function createXiaomiDeviceId(): string {
 }
 
 // 让小爱音箱语音播报一段文字。优先走 mibrain/text_to_speech（多数固件真正的
-// 播报入口），失败再回退到老的 mediaplayer/player_play_tts（对齐 参考实现）。
+// 播报入口），失败再回退到老的 mediaplayer/player_play_tts。
 export async function sendXiaomiTts(input: {
   session: XiaomiSession;
   deviceId: string;
@@ -1325,7 +1325,7 @@ function parseXiaomiJson<T>(raw: string): T {
 }
 
 // 从原始 JSON 文本里用正则提取大整数字段（如 nonce），避免 JSON.parse 丢失
-// 超过 2^53 的精度。对齐 参考实现 的 extractBigIntField。
+// 超过 2^53 的精度。
 // @internal 导出仅供单元测试使用。
 export function extractBigIntField(
   raw: string,
