@@ -38,6 +38,17 @@ function persistQueue(): void {
   }
 }
 
+// 账户删除时重置内存队列（不落盘——调用方随后会清空 kv）。
+export function resetQueueForAccountDeletion(): void {
+  queue = {
+    sessionId: "default",
+    items: [],
+    currentIndex: -1,
+    playMode: "list_loop",
+    updatedAt: Date.now(),
+  };
+}
+
 export async function getQueue(): Promise<HMusicQueue> {
   return queue;
 }

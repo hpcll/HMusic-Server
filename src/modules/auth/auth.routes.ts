@@ -1,7 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { resetPlaybackStateForAccountDeletion } from "../playback/playback.service.js";
+import { resetQueueForAccountDeletion } from "../queue/queue.service.js";
 import {
   changePassword,
+  deleteAccount,
   hasAdminUser,
   setupAdmin,
   verifyLogin,
@@ -15,6 +18,10 @@ const credentialsSchema = z.object({
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(256),
   newPassword: z.string().min(8).max(256),
+});
+
+const deleteAccountSchema = z.object({
+  password: z.string().min(1).max(256),
 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -66,5 +73,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     // 改完签发新 token，前端无需重新登录。
     const accessToken = app.jwt.sign({ sub: user.id, username: user.username });
     return { user, accessToken };
+  });
+
+  // 账户删除（App Store 合规）：校验密码后物理清除全部数据，服务端回到未初始化态。
+  // 先清库/文件，再重置内存播放/队列态（顺序无关：删完库后内存态也无处落盘）。
+  app.delete("/account", async (request) => {
+    await request.jwtVerify();
+    const payload = request.user as { sub: string };
+    const body = deleteAccountSchema.parse(request.body ?? {});
+    await deleteAccount(payload.sub, body.password);
+    resetPlaybackStateForAccountDeletion();
+    resetQueueForAccountDeletion();
+    return { deleted: true };
   });
 }

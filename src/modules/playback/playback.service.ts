@@ -74,6 +74,28 @@ function restorePlaybackState(): HMusicPlaybackState {
   return fallback;
 }
 
+// 账户删除时重置内存播放态（不落盘——调用方随后会清空 kv）：停掉连播定时器，
+// 播放态归零，避免删号后残留旧曲/旧设备被后续（重新 setup 的）会话读到。
+export function resetPlaybackStateForAccountDeletion(): void {
+  cancelAutoNext();
+  lastResolvedAt = 0;
+  lastDevicePositionMs = 0;
+  lastAdvancedSeq = -1;
+  playInstanceSeq = 0;
+  playbackState = {
+    sessionId: "default",
+    state: "idle",
+    positionMs: 0,
+    durationMs: 0,
+    volume: 0,
+    playMode: "list_loop",
+    queueIndex: -1,
+    queueLength: 0,
+    seekEnabled: false,
+    updatedAt: Date.now(),
+  };
+}
+
 function persistPlaybackState(): void {
   try {
     // streamUrl 是易逝的解析产物，不入快照（恢复时必须重解析）。
