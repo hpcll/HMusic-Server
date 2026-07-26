@@ -49,6 +49,7 @@ export function ensureSchema(): void {
       ssecurity_enc TEXT,
       device_id TEXT,
       is_logged_in INTEGER NOT NULL DEFAULT 0,
+      session_expired_at INTEGER,
       updated_at INTEGER NOT NULL
     );
 
@@ -162,6 +163,15 @@ export function ensureSchema(): void {
     sqlite.exec(`
       ALTER TABLE mi_web_verification_sessions
       ADD COLUMN cookies_json_enc TEXT;
+    `);
+  } catch {
+    // Column already exists on databases created by newer builds.
+  }
+
+  try {
+    sqlite.exec(`
+      ALTER TABLE mi_accounts
+      ADD COLUMN session_expired_at INTEGER;
     `);
   } catch {
     // Column already exists on databases created by newer builds.

@@ -40,6 +40,8 @@ export const miAccounts = sqliteTable("mi_accounts", {
   ssecurityEnc: text("ssecurity_enc"),
   deviceId: text("device_id"),
   isLoggedIn: integer("is_logged_in").notNull().default(0),
+  // 小米侧 401 确证会话失效的时间；区分「登录已过期」与「主动退出」（后者为 NULL）。
+  sessionExpiredAt: integer("session_expired_at"),
   updatedAt: integer("updated_at").notNull(),
 });
 

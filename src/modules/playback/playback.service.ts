@@ -19,6 +19,7 @@ import {
   getMiotDid,
   getStoredMiSession,
   invalidateMiioSession,
+  markMiSessionExpiredIfUnauthorized,
 } from "../mi/mi.service.js";
 import {
   sendXiaomiMiotAction,
@@ -688,7 +689,12 @@ export async function speakOnDevice(
     }
   }
   const session = await getStoredMiSession();
-  await sendXiaomiTts({ session, deviceId: target.id, text });
+  try {
+    await sendXiaomiTts({ session, deviceId: target.id, text });
+  } catch (error) {
+    await markMiSessionExpiredIfUnauthorized(error);
+    throw error;
+  }
   return { deviceId: target.id, deviceName: target.name };
 }
 
@@ -867,12 +873,19 @@ async function sendPlaybackUbus(
   message: Record<string, unknown>,
 ): Promise<unknown> {
   const session = await getStoredMiSession();
-  return sendXiaomiUbusRequest({
-    session,
-    deviceId,
-    method,
-    message,
-  });
+  try {
+    return await sendXiaomiUbusRequest({
+      session,
+      deviceId,
+      method,
+      message,
+    });
+  } catch (error) {
+    // 401 确证会话失效时当场落库，/mi/status 随即反映真状态，
+    // 客户端不用等下一次播放失败才知道要重新登录。
+    await markMiSessionExpiredIfUnauthorized(error);
+    throw error;
+  }
 }
 
 function delay(ms: number): Promise<void> {

@@ -59,6 +59,8 @@ type WebVerificationSession = {
 
 export type MiStatus = {
   loggedIn: boolean;
+  // 曾登录但小米侧 401 确证会话失效：客户端据此展示「登录已过期」而非「未登录」。
+  sessionExpired: boolean;
   accountMasked?: string;
   deviceId?: string;
   deviceCount?: number;
@@ -89,17 +91,54 @@ export type MiWebVerificationProxySession = {
   expiresAt: number;
 };
 
-export async function getMiStatus(): Promise<MiStatus> {
+// verify=true 的真校验限频窗口：状态查询不能每次都打小米，App 冷启/回前台
+// 命中同一窗口时直接回数据库快照。进程内存即可，重启后首查会重新校验。
+const statusVerifyIntervalMs = 5 * 60 * 1000;
+let lastStatusVerifyAt = 0;
+
+export async function getMiStatus(options?: {
+  verify?: boolean;
+}): Promise<MiStatus> {
+  const account = await readMiAccount();
+  if (!account) return { loggedIn: false, sessionExpired: false };
+
+  // 真校验：拉一次设备列表验证 serviceToken 仍有效（副产品是设备表保鲜）。
+  // 只有确证 401 才翻状态；网络抖动/小米服务不可达一律保持数据库快照，
+  // 避免把「暂时连不上」谎报成「登录过期」。
+  if (
+    options?.verify &&
+    account.isLoggedIn === 1 &&
+    Date.now() - lastStatusVerifyAt >= statusVerifyIntervalMs
+  ) {
+    lastStatusVerifyAt = Date.now();
+    try {
+      const devices = await fetchXiaomiDevices(await getStoredMiSession());
+      await saveDevices(devices);
+    } catch (error) {
+      await markMiSessionExpiredIfUnauthorized(error);
+    }
+    return toMiStatus(await readMiAccount());
+  }
+
+  return toMiStatus(account);
+}
+
+async function readMiAccount() {
   const rows = await db
     .select()
     .from(miAccounts)
     .where(eq(miAccounts.id, accountId))
     .limit(1);
-  const account = rows[0];
-  if (!account) return { loggedIn: false };
+  return rows[0];
+}
 
+function toMiStatus(
+  account: Awaited<ReturnType<typeof readMiAccount>>,
+): MiStatus {
+  if (!account) return { loggedIn: false, sessionExpired: false };
   return {
     loggedIn: account.isLoggedIn === 1,
+    sessionExpired: account.isLoggedIn !== 1 && account.sessionExpiredAt != null,
     accountMasked: account.accountMasked,
     deviceId: account.deviceId ?? undefined,
     updatedAt: account.updatedAt,
@@ -119,8 +158,11 @@ export async function loginMiAccount(
       .where(eq(miAccounts.id, accountId))
       .limit(1)
   )[0];
+  // 会话过期后的重登也复用原 deviceId：小米按设备标识做风控，换新 ID 容易
+  // 再次触发短信验证。仅从未登录过（无 deviceId）时才生成新标识。
   const deviceId =
-    existing?.isLoggedIn === 1 && existing.deviceId
+    existing?.deviceId &&
+    (existing.isLoggedIn === 1 || existing.sessionExpiredAt != null)
       ? existing.deviceId
       : createXiaomiDeviceId();
   await saveLoginAttempt(account, deviceId);
@@ -543,6 +585,7 @@ async function saveMiSession(
       ssecurityEnc: session.ssecurity ? encryptSecret(session.ssecurity) : null,
       deviceId: session.deviceId,
       isLoggedIn: 1,
+      sessionExpiredAt: null,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -556,6 +599,7 @@ async function saveMiSession(
           : null,
         deviceId: session.deviceId,
         isLoggedIn: 1,
+        sessionExpiredAt: null,
         updatedAt: now,
       },
     });
@@ -568,6 +612,7 @@ export async function logoutMiAccount(): Promise<MiStatus> {
       id: accountId,
       accountMasked: "",
       isLoggedIn: 0,
+      sessionExpiredAt: null,
       updatedAt: Date.now(),
     })
     .onConflictDoUpdate({
@@ -578,6 +623,8 @@ export async function logoutMiAccount(): Promise<MiStatus> {
         ssecurityEnc: null,
         deviceId: null,
         isLoggedIn: 0,
+        // 主动退出不是过期：横幅与「已过期」状态卡都不应出现。
+        sessionExpiredAt: null,
         updatedAt: Date.now(),
       },
     });
@@ -607,6 +654,13 @@ export async function getStoredMiSession(): Promise<XiaomiSession> {
   )[0];
   if (!account || account.isLoggedIn !== 1) {
     // 注意：客户端把 401 当 HMusic 会话失效并登出，小米侧状态一律用 409/502。
+    if (account?.sessionExpiredAt != null) {
+      throw new AppError(
+        "MI_SESSION_EXPIRED",
+        "小米登录已过期，请到 设置 → 小米账号 重新登录",
+        409,
+      );
+    }
     throw new AppError("MI_ACCOUNT_NOT_LOGGED_IN", "小米账号尚未登录", 409);
   }
   const serviceToken = decryptSecret(account.serviceTokenEnc);
@@ -633,9 +687,7 @@ export async function refreshMiDevices(): Promise<{ deviceCount: number }> {
   try {
     devices = await fetchXiaomiDevices(session);
   } catch (error) {
-    if (isUnauthorizedDeviceListError(error)) {
-      await clearStoredMiSession();
-    }
+    await markMiSessionExpiredIfUnauthorized(error);
     throw error;
   }
   await saveDevices(devices);
@@ -646,12 +698,17 @@ export async function refreshMiDevices(): Promise<{ deviceCount: number }> {
 // 当场暴露——之前"探测"只回数据库里的能力表，永远显示正常，播放才翻车。
 export async function probeMiDeviceLink(deviceId: string): Promise<void> {
   const session = await getStoredMiSession();
-  await sendXiaomiUbusRequest({
-    session,
-    deviceId,
-    method: "player_get_play_status",
-    message: { media: "app_ios" },
-  });
+  try {
+    await sendXiaomiUbusRequest({
+      session,
+      deviceId,
+      method: "player_get_play_status",
+      message: { media: "app_ios" },
+    });
+  } catch (error) {
+    await markMiSessionExpiredIfUnauthorized(error);
+    throw error;
+  }
 }
 
 async function saveLoginAttempt(
@@ -684,22 +741,37 @@ async function saveLoginAttempt(
     });
 }
 
-async function clearStoredMiSession(): Promise<void> {
+// 小米侧 401 确证会话失效：清掉已死的凭据、翻登录位并记过期时间。保留
+// accountMasked（UI 要说清是哪个账号过期）和 deviceId（重登复用降风控）。
+export async function markMiSessionExpired(): Promise<void> {
+  cachedMiioSession = undefined;
   await db
     .update(miAccounts)
     .set({
       serviceTokenEnc: null,
       userIdEnc: null,
       ssecurityEnc: null,
-      deviceId: null,
       isLoggedIn: 0,
+      sessionExpiredAt: Date.now(),
       updatedAt: Date.now(),
     })
     .where(eq(miAccounts.id, accountId));
 }
 
-function isUnauthorizedDeviceListError(error: unknown): boolean {
-  if (!(error instanceof AppError) || error.code !== "MI_DEVICE_LIST_FAILED") {
+// 供所有真实调用小米的链路（播放控制/探测/设备列表/状态真校验）在 catch 里
+// 统一落状态：只认确证的 401，其余错误（离线/网络/限频）不动登录位。
+export async function markMiSessionExpiredIfUnauthorized(
+  error: unknown,
+): Promise<void> {
+  if (isMiUnauthorizedError(error)) await markMiSessionExpired();
+}
+
+function isMiUnauthorizedError(error: unknown): boolean {
+  if (!(error instanceof AppError)) return false;
+  if (
+    error.code !== "MI_UBUS_REQUEST_FAILED" &&
+    error.code !== "MI_DEVICE_LIST_FAILED"
+  ) {
     return false;
   }
   const details = asRecord(error.details);

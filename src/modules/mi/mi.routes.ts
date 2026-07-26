@@ -15,6 +15,12 @@ import {
   startMiWebVerification,
 } from "./mi.service.js";
 
+// verify=1 触发限频真校验（拉一次设备列表验 serviceToken），供客户端
+// 冷启/回前台确认小米会话是否已过期；缺省保持纯数据库快照。
+const statusQuerySchema = z.object({
+  verify: z.enum(["1", "true"]).optional(),
+});
+
 const loginSchema = z
   .object({
     account: z.string().min(1),
@@ -75,7 +81,10 @@ const webVerificationCompleteSchema = z
 export async function miRoutes(app: FastifyInstance): Promise<void> {
   requireAuth(app);
 
-  app.get("/status", async () => getMiStatus());
+  app.get("/status", async (request) => {
+    const query = statusQuerySchema.parse(request.query);
+    return getMiStatus({ verify: query.verify != null });
+  });
 
   app.post("/login", async (request) => {
     const body = loginSchema.parse(request.body);
