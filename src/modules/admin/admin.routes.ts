@@ -390,6 +390,111 @@ function renderAdminHtml(): string {
         transition: width 0.3s ease;
       }
 
+      .overview {
+        margin-bottom: 20px;
+        overflow: hidden;
+        border-radius: var(--radius);
+        background: linear-gradient(158deg, #20312f 0%, #142120 58%, #0d1615 100%);
+        color: #f4f8f7;
+        box-shadow: var(--shadow);
+      }
+
+      .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .overview-item {
+        min-width: 0;
+        min-height: 132px;
+        padding: 20px;
+        border: 0;
+        border-right: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        box-shadow: none;
+        cursor: default;
+        display: block;
+      }
+
+      .overview-item:last-child {
+        border-right: 0;
+      }
+
+      button.overview-item {
+        width: 100%;
+        font-weight: inherit;
+        cursor: pointer;
+      }
+
+      button.overview-item:hover:not(:disabled),
+      button.overview-item:focus-visible {
+        border-color: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.07);
+        color: inherit;
+        outline: none;
+      }
+
+      button.overview-item:focus-visible {
+        box-shadow: inset 0 0 0 2px #72d4ca;
+      }
+
+      .overview-label {
+        display: block;
+        margin-bottom: 10px;
+        color: #8fa09d;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .overview-value {
+        display: block;
+        overflow: hidden;
+        color: #f4f8f7;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.35;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .overview-value.warn {
+        color: #f7c66b;
+      }
+
+      .overview-meta {
+        display: block;
+        margin-top: 7px;
+        color: #afbcba;
+        font-size: 12px;
+        font-weight: 500;
+      }
+
+      .overview-progress {
+        /* span 默认是 inline，不加 display:block 则 height 失效，
+           内部 i 的 height:100% 会退到按单元格高度算，涨成一坨色块。 */
+        display: block;
+        height: 3px;
+        margin-top: 12px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      .overview-progress i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: #58cabd;
+        transition: width 0.3s ease;
+      }
+
+      .dashboard-grid .section {
+        scroll-margin-top: 84px;
+      }
+
       .stat-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -446,17 +551,6 @@ function renderAdminHtml(): string {
         height: 100%;
         border-radius: 999px;
         background: var(--brand);
-      }
-
-      .quick-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 12px;
-      }
-
-      .quick-grid button {
-        width: 100%;
       }
 
       .message {
@@ -833,6 +927,18 @@ function renderAdminHtml(): string {
       }
 
       @media (max-width: 720px) {
+        .overview-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .overview-item:nth-child(2) {
+          border-right: 0;
+        }
+
+        .overview-item:nth-child(-n + 2) {
+          border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
         body.auth-mode main.shell {
           padding: 16px;
           place-items: start center;
@@ -865,6 +971,21 @@ function renderAdminHtml(): string {
       }
 
       @media (max-width: 420px) {
+        .overview-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .overview-item,
+        .overview-item:nth-child(2) {
+          min-height: 112px;
+          border-right: 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .overview-item:last-child {
+          border-bottom: 0;
+        }
+
         body.auth-mode main.shell {
           padding: 0;
         }
@@ -982,63 +1103,19 @@ function renderAdminHtml(): string {
         </div>
       </section>
 
-      <div id="dashboard" class="grid hidden">
-        <div>
-          <section class="section">
-            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/></svg></span>小米账号</h2>
-            <p class="sec-sub">账号密码只提交给当前 HMusic Server。服务端保存小米登录凭据，App 不需要保存小米密码。</p>
-            <label>
-              小米账号
-              <input id="miAccount" autocomplete="username" />
-            </label>
-            <label>
-              小米密码
-              <input id="miPassword" autocomplete="current-password" type="password" />
-            </label>
-            <label>
-              图形验证码
-              <input id="miCaptcha" autocomplete="one-time-code" placeholder="仅在服务端提示图形验证码时填写" />
-            </label>
-            <div class="actions">
-              <button id="miLoginButton" type="button">登录小米账号</button>
-              <button id="miWebLoginButton" class="secondary" type="button">短信验证码登录</button>
-              <button id="miStatusButton" class="secondary" type="button">刷新状态</button>
-            </div>
-            <div id="miVerification" class="message warn hidden"></div>
-            <div id="miWebVerification" class="message warn hidden"></div>
-            <details class="inline-panel">
-              <summary>导入已有小米会话</summary>
-              <p class="subtle">当短信验证被限制时，可从已登录 Cookie 或 STS 回调导入。</p>
-              <label>
-                账号标识
-                <input id="miImportAccount" placeholder="用于后台展示，可填手机号或邮箱" />
-              </label>
-              <label>
-                STS URL
-                <input id="miImportStsUrl" placeholder="https://api2.mina.mi.com/sts?..." />
-              </label>
-              <div class="split">
-                <label>
-                  serviceToken
-                  <input id="miImportServiceToken" />
-                </label>
-                <label>
-                  userId
-                  <input id="miImportUserId" />
-                </label>
-              </div>
-              <label>
-                ssecurity
-                <input id="miImportSsecurity" />
-              </label>
-              <div class="actions">
-                <button id="miImportButton" class="secondary" type="button">导入会话</button>
-              </div>
-            </details>
-            <div class="status" id="miStatus"></div>
-          </section>
+      <div id="dashboard" class="hidden">
+        <section class="overview" aria-label="状态总览">
+          <div class="overview-grid">
+            <div class="overview-item" id="overviewPlayback"></div>
+            <button class="overview-item" type="button" data-scroll-target="devicesSection" id="overviewDevices"></button>
+            <button class="overview-item" type="button" data-scroll-target="miAccountSection" id="overviewMi"></button>
+            <button class="overview-item" type="button" data-scroll-target="statsSection" id="overviewStats"></button>
+          </div>
+        </section>
 
-          <section class="section">
+        <div class="grid dashboard-grid">
+          <div class="dashboard-main">
+          <section class="section" id="devicesSection">
             <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>播放设备</h2>
             <p class="sec-sub">登录小米账号后刷新设备，选择默认播放设备。</p>
             <div class="actions">
@@ -1048,7 +1125,7 @@ function renderAdminHtml(): string {
             <div id="devices" class="device-list"></div>
           </section>
 
-          <section class="section">
+          <section class="section" id="configSection">
             <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>运行配置</h2>
             <div class="split">
               <label>
@@ -1095,29 +1172,7 @@ function renderAdminHtml(): string {
             </div>
           </section>
 
-          <section class="section">
-            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>手工曲目</h2>
-            <div class="split">
-              <label>
-                歌名
-                <input id="manualTitle" />
-              </label>
-              <label>
-                歌手
-                <input id="manualArtist" />
-              </label>
-            </div>
-            <label>
-              音频 URL
-              <input id="manualUrl" placeholder="https://example.com/song.mp3" />
-            </label>
-            <div class="actions">
-              <button id="addManualTrackButton" type="button">加入手工曲目</button>
-            </div>
-            <div id="manualTracks" class="item-list"></div>
-          </section>
-
-          <section class="section">
+          <section class="section" id="pluginsSection">
             <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></span>LX 插件</h2>
             <div class="split">
               <label>
@@ -1155,7 +1210,103 @@ function renderAdminHtml(): string {
             <div id="plugins" class="item-list"></div>
           </section>
 
-          <section class="section">
+          <section class="section" id="manualTracksSection">
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>手工曲目</h2>
+            <div class="split">
+              <label>
+                歌名
+                <input id="manualTitle" />
+              </label>
+              <label>
+                歌手
+                <input id="manualArtist" />
+              </label>
+            </div>
+            <label>
+              音频 URL
+              <input id="manualUrl" placeholder="https://example.com/song.mp3" />
+            </label>
+            <div class="actions">
+              <button id="addManualTrackButton" type="button">加入手工曲目</button>
+            </div>
+            <div id="manualTracks" class="item-list"></div>
+          </section>
+
+          <section class="section" id="miAccountSection">
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/></svg></span>小米账号</h2>
+            <div class="status" id="miStatus"></div>
+            <div class="actions hidden" id="miLoggedInActions">
+              <button id="miReloginButton" class="secondary" type="button">重新登录</button>
+            </div>
+            <div id="miLoginForm">
+              <p class="sec-sub">账号密码只提交给当前 HMusic Server。服务端保存小米登录凭据，App 不需要保存小米密码。</p>
+              <label>
+                小米账号
+                <input id="miAccount" autocomplete="username" />
+              </label>
+              <label>
+                小米密码
+                <input id="miPassword" autocomplete="current-password" type="password" />
+              </label>
+              <label>
+                图形验证码
+                <input id="miCaptcha" autocomplete="one-time-code" placeholder="仅在服务端提示图形验证码时填写" />
+              </label>
+              <div class="actions">
+                <button id="miLoginButton" type="button">登录小米账号</button>
+                <button id="miStatusButton" class="secondary" type="button">刷新状态</button>
+              </div>
+              <div id="miWebVerification" class="message warn hidden"></div>
+              <details class="inline-panel" id="miSmsDetails">
+                <summary>短信验证码登录</summary>
+                <p class="subtle">使用小米账号密码发起短信验证登录。</p>
+                <div class="actions">
+                  <button id="miWebLoginButton" class="secondary" type="button">发送短信验证码</button>
+                </div>
+                <div id="miVerification" class="message warn hidden"></div>
+              </details>
+              <details class="inline-panel">
+                <summary>手动导入会话</summary>
+                <p class="subtle">导入已有小米会话；当短信验证被限制时，可使用已登录 Cookie 或 STS 回调。</p>
+                <label>
+                  账号标识
+                  <input id="miImportAccount" placeholder="用于后台展示，可填手机号或邮箱" />
+                </label>
+                <label>
+                  STS URL
+                  <input id="miImportStsUrl" placeholder="https://api2.mina.mi.com/sts?..." />
+                </label>
+                <div class="split">
+                  <label>
+                    serviceToken
+                    <input id="miImportServiceToken" />
+                  </label>
+                  <label>
+                    userId
+                    <input id="miImportUserId" />
+                  </label>
+                </div>
+                <label>
+                  ssecurity
+                  <input id="miImportSsecurity" />
+                </label>
+                <div class="actions">
+                  <button id="miImportButton" class="secondary" type="button">导入会话</button>
+                </div>
+              </details>
+            </div>
+          </section>
+
+        </div>
+
+        <aside class="dashboard-side">
+          <section class="section" id="statsSection">
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>听歌统计</h2>
+            <p class="sec-sub">来自播放历史的聚合数据，近 30 天。</p>
+            <div class="status" id="listeningStats"></div>
+          </section>
+
+          <section class="section" id="searchSection">
             <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>搜索与播放测试</h2>
             <div class="split">
               <label>
@@ -1175,40 +1326,22 @@ function renderAdminHtml(): string {
             </div>
             <div id="searchResults" class="item-list"></div>
           </section>
-        </div>
 
-        <aside>
-          <section class="section">
-            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>服务端状态</h2>
-            <div class="status" id="runtimeStatus"></div>
-          </section>
-
-          <section class="section">
+          <section class="section" id="diagnosticsSection">
             <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>链路诊断</h2>
             <p class="sec-sub">先用内置测试音频验证 HMusic Server 到小米音箱的播放链路。</p>
             <div class="actions">
               <button id="testToneButton" type="button">播放测试音频</button>
-              <button id="playbackStateButton" class="secondary" type="button">刷新播放状态</button>
-            </div>
-            <div class="status" id="playbackStatus"></div>
-          </section>
-
-          <section class="section">
-            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>听歌统计</h2>
-            <p class="sec-sub">来自播放历史的聚合数据，近 30 天。</p>
-            <div class="status" id="listeningStats"></div>
-          </section>
-
-          <section class="section">
-            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg></span>快捷操作</h2>
-            <div class="quick-grid">
-              <button id="quickRefreshDevices" class="secondary" type="button">刷新设备</button>
-              <button id="quickRefreshMi" class="secondary" type="button">刷新小米状态</button>
-              <button id="quickReloadConfig" class="secondary" type="button">重载配置</button>
-              <button id="quickRefreshStats" class="secondary" type="button">刷新统计</button>
             </div>
           </section>
+
+          <section class="section" id="runtimeSection">
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>服务端状态</h2>
+            <div class="status" id="runtimeStatus"></div>
+          </section>
+
         </aside>
+        </div>
       </div>
     </main>
 
@@ -1226,6 +1359,16 @@ function renderAdminHtml(): string {
         plugins: [],
         searchTracks: [],
         playbackState: null,
+        devices: null,
+        miStatus: null,
+        listeningStats: undefined,
+        miReloginExpanded: false,
+        playbackPollTimer: null,
+        deviceStatsPollTimer: null,
+        dashboardPolling: {
+          playback: false,
+          deviceStats: false,
+        },
       };
 
       const el = (id) => document.getElementById(id);
@@ -1283,6 +1426,13 @@ function renderAdminHtml(): string {
         el("dashboard").classList.toggle("hidden", !authenticated);
         el("logoutButton").classList.toggle("hidden", !authenticated);
 
+        if (authenticated) {
+          renderOverview();
+          startDashboardPolling();
+        } else {
+          stopDashboardPolling();
+        }
+
         el("authTitle").textContent = state.initialized ? "管理员登录" : "创建管理员账号";
         el("authButtonLabel").textContent = state.initialized ? "登录" : "创建并登录";
         el("authHint").textContent = state.initialized
@@ -1313,25 +1463,67 @@ function renderAdminHtml(): string {
 
       function renderPlaybackState(playback) {
         state.playbackState = playback;
-        if (!playback) {
-          el("playbackStatus").innerHTML = '<span class="pill warn">未读取</span>';
-          return;
-        }
-        const track = playback.track;
-        const pos = Math.round((playback.positionMs || 0) / 1000);
-        const dur = Math.round((playback.durationMs || 0) / 1000);
-        const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0;
-        const statePill =
-          '<span class="pill ' + (playback.state === "playing" ? "" : "warn") + '">' +
-          escapeHtml(playback.state || "unknown") + "</span>";
-        el("playbackStatus").innerHTML =
-          '<div class="status-row"><span class="k">状态</span>' + statePill + "</div>" +
-          '<div class="status-row"><span class="k">设备</span><span class="v">' +
-          escapeHtml(playback.deviceName || playback.deviceId || "未选择") + "</span></div>" +
-          '<div class="status-row"><span class="k">曲目</span><span class="v">' +
-          escapeHtml(track ? [track.title, track.artist].filter(Boolean).join(" - ") : "无") + "</span></div>" +
-          '<div class="status-row"><span class="k">进度</span><span class="v">' + pos + "s / " + dur + "s</span></div>" +
-          '<div class="progress"><div class="progress-bar" style="width:' + pct + '%"></div></div>';
+        renderOverview();
+      }
+
+      function formatDuration(milliseconds) {
+        const seconds = Math.max(0, Math.round((milliseconds || 0) / 1000));
+        const minutes = Math.floor(seconds / 60);
+        return String(minutes).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+      }
+
+      function renderOverview() {
+        const playback = state.playbackState;
+        // 暂停也要显示曲目（只是标注已暂停），否则与旧版行为相比是退化。
+        const track = playback?.track || null;
+        const positionMs = playback?.positionMs || 0;
+        const durationMs = playback?.durationMs || 0;
+        const progress = durationMs > 0
+          ? Math.min(100, Math.round((positionMs / durationMs) * 100))
+          : 0;
+        el("overviewPlayback").innerHTML = track
+          ? '<span class="overview-label">正在播放</span>' +
+            '<span class="overview-value">' +
+            escapeHtml([track.title, track.artist].filter(Boolean).join(" - ")) +
+            '</span><span class="overview-meta">' +
+            (playback?.state === "playing" ? "" : "已暂停 · ") +
+            formatDuration(positionMs) + " / " + formatDuration(durationMs) +
+            '</span><span class="overview-progress"><i style="width:' + progress + '%"></i></span>'
+          : '<span class="overview-label">正在播放</span><span class="overview-value">空闲</span>' +
+            '<span class="overview-meta">当前没有播放任务</span>';
+
+        const devices = state.devices;
+        const onlineCount = devices?.filter((device) => device.isOnline).length || 0;
+        el("overviewDevices").innerHTML =
+          '<span class="overview-label">播放设备</span><span class="overview-value">' +
+          (devices ? devices.length + " 台 · 在线 " + onlineCount : "读取中...") +
+          '</span><span class="overview-meta">查看和选择默认设备</span>';
+
+        const miStatus = state.miStatus;
+        const miText = !miStatus
+          ? "读取中..."
+          : miStatus.loggedIn
+            ? "已登录"
+            : miStatus.sessionExpired
+              ? "已失效"
+              : "未登录";
+        const miMeta = miStatus?.accountMasked || (miStatus?.sessionExpired ? "请重新登录" : "配置小米账号");
+        el("overviewMi").innerHTML =
+          '<span class="overview-label">小米会话</span><span class="overview-value' +
+          (miStatus?.sessionExpired ? " warn" : "") + '">' + escapeHtml(miText) +
+          '</span><span class="overview-meta">' + escapeHtml(miMeta) + "</span>";
+
+        const stats = state.listeningStats;
+        const win = stats?.last30d || stats?.overview || {};
+        const statsText = stats === undefined
+          ? "读取中..."
+          : stats
+            ? "近 30 天 " + (win.totalPlays ?? 0) + " 次"
+            : "暂不可用";
+        el("overviewStats").innerHTML =
+          '<span class="overview-label">听歌统计</span><span class="overview-value">' +
+          escapeHtml(statsText) +
+          '</span><span class="overview-meta">查看播放历史聚合</span>';
       }
 
       function showMiVerificationStatus(text, type) {
@@ -1343,23 +1535,36 @@ function renderAdminHtml(): string {
       }
 
       function renderMiStatus(status) {
+        state.miStatus = status;
         if (!status) {
           el("miStatus").innerHTML = '<span class="pill warn">未读取</span>';
+          renderOverview();
           return;
         }
+        const statusText = status.loggedIn
+          ? "已登录"
+          : status.sessionExpired
+            ? "已失效"
+            : "未登录";
         const rows = [
-          '<div class="status-row"><span class="k">登录状态</span><span class="pill ' + (status.loggedIn ? "" : "warn") + '">' + (status.loggedIn ? "已登录" : "未登录") + "</span></div>",
+          '<div class="status-row"><span class="k">登录状态</span><span class="pill ' + (status.loggedIn ? "" : "warn") + '">' + statusText + "</span></div>",
         ];
         if (status.accountMasked) rows.push('<div class="status-row"><span class="k">账号</span><span class="v">' + escapeHtml(status.accountMasked) + "</span></div>");
         if (status.deviceId) rows.push('<div class="status-row"><span class="k">登录设备标识</span><span class="v">' + escapeHtml(status.deviceId) + "</span></div>");
         if (status.deviceCount !== undefined) rows.push('<div class="status-row"><span class="k">设备数量</span><span class="v">' + escapeHtml(status.deviceCount) + "</span></div>");
+        if (status.updatedAt) rows.push('<div class="status-row"><span class="k">状态更新时间</span><span class="v">' + escapeHtml(new Date(status.updatedAt).toLocaleString()) + "</span></div>");
         el("miStatus").innerHTML = rows.join("");
+        el("miLoginForm").classList.toggle("hidden", status.loggedIn && !state.miReloginExpanded);
+        el("miLoggedInActions").classList.toggle("hidden", !status.loggedIn);
+        renderOverview();
       }
 
       function renderDevices(devices) {
+        state.devices = devices || [];
         const container = el("devices");
         if (!devices || devices.length === 0) {
           container.innerHTML = '<div class="message warn">暂无设备。请先登录小米账号并刷新设备。</div>';
+          renderOverview();
           return;
         }
         container.innerHTML = devices
@@ -1381,6 +1586,7 @@ function renderAdminHtml(): string {
         container.querySelectorAll("[data-device-id]").forEach((button) => {
           button.addEventListener("click", () => selectDevice(button.dataset.deviceId));
         });
+        renderOverview();
       }
 
       function renderConfig(config) {
@@ -1545,14 +1751,66 @@ function renderAdminHtml(): string {
           const result = await api("/stats");
           renderListeningStats(result.stats);
         } catch {
+          state.listeningStats = null;
           el("listeningStats").innerHTML = '<div class="message warn">统计暂不可用</div>';
+          renderOverview();
         }
       }
 
+      function stopDashboardPolling() {
+        if (state.playbackPollTimer) clearInterval(state.playbackPollTimer);
+        if (state.deviceStatsPollTimer) clearInterval(state.deviceStatsPollTimer);
+        state.playbackPollTimer = null;
+        state.deviceStatsPollTimer = null;
+        state.dashboardPolling.playback = false;
+        state.dashboardPolling.deviceStats = false;
+      }
+
+      async function pollDashboard(key, task) {
+        if (
+          document.hidden ||
+          !state.token ||
+          !state.user ||
+          el("dashboard").classList.contains("hidden") ||
+          state.dashboardPolling[key]
+        ) {
+          return;
+        }
+        state.dashboardPolling[key] = true;
+        try {
+          await task();
+        } catch {
+          // 自动轮询静默失败，各区块的手动操作仍会展示具体错误。
+        } finally {
+          state.dashboardPolling[key] = false;
+        }
+      }
+
+      function startDashboardPolling() {
+        if (state.playbackPollTimer && state.deviceStatsPollTimer) return;
+        stopDashboardPolling();
+        state.playbackPollTimer = setInterval(() => {
+          void pollDashboard("playback", loadPlaybackState);
+        }, 8000);
+        state.deviceStatsPollTimer = setInterval(() => {
+          void pollDashboard("deviceStats", () => Promise.all([listDevices(), loadListeningStats()]));
+        }, 60000);
+      }
+
+      function resetDashboardState() {
+        state.playbackState = null;
+        state.devices = null;
+        state.miStatus = null;
+        state.listeningStats = undefined;
+        state.miReloginExpanded = false;
+      }
+
       function renderListeningStats(stats) {
+        state.listeningStats = stats || null;
         const container = el("listeningStats");
         if (!stats) {
           container.innerHTML = '<div class="message warn">暂无统计数据</div>';
+          renderOverview();
           return;
         }
         const win = stats.last30d || stats.overview || {};
@@ -1593,6 +1851,7 @@ function renderAdminHtml(): string {
             .join("") +
           "</div>" +
           distHtml;
+        renderOverview();
       }
 
       async function loadConfig() {
@@ -1649,6 +1908,8 @@ function renderAdminHtml(): string {
       }
 
       async function removeManualTrack(index) {
+        const track = state.config?.manualTracks?.[index];
+        if (!track || !confirm('确认删除手工曲目“' + (track.title || "未命名曲目") + '”？')) return;
         await run(async () => {
           const manualTracks = [...(state.config?.manualTracks || [])];
           manualTracks.splice(index, 1);
@@ -1719,6 +1980,9 @@ function renderAdminHtml(): string {
       }
 
       async function deletePlugin(pluginId) {
+        const plugin = state.plugins.find((item) => item.id === pluginId);
+        const pluginName = plugin?.name || pluginId;
+        if (!confirm('确认删除 LX 插件“' + pluginName + '”？')) return;
         await run(async () => {
           await api("/sources/lx-plugins/" + encodeURIComponent(pluginId), {
             method: "DELETE",
@@ -1880,6 +2144,7 @@ function renderAdminHtml(): string {
           state.verificationTimer = null;
         }
         stopMiWebVerificationPolling();
+        state.miReloginExpanded = false;
         el("miVerification").classList.add("hidden");
         el("miWebVerification").classList.add("hidden");
         renderMiStatus(status);
@@ -1933,6 +2198,7 @@ function renderAdminHtml(): string {
 
       function showSmsVerificationPrompt(result) {
         el("miWebVerification").classList.add("hidden");
+        el("miSmsDetails").open = true;
         const box = el("miVerification");
         const maskedPhone = result.maskedPhone || "绑定手机号";
         const expiresAt = result.expiresAt
@@ -2138,8 +2404,10 @@ function renderAdminHtml(): string {
       el("passwordToggle").addEventListener("click", togglePasswordVisibility);
       el("logoutButton").addEventListener("click", () => {
         stopMiWebVerificationPolling();
+        stopDashboardPolling();
         state.token = "";
         state.user = null;
+        resetDashboardState();
         localStorage.removeItem("hmusic_admin_token");
         el("adminPass").value = "";
         el("adminPass").type = "password";
@@ -2148,6 +2416,11 @@ function renderAdminHtml(): string {
         el("passwordToggle").setAttribute("aria-pressed", "false");
         renderAuth();
         renderRuntime();
+      });
+      el("miReloginButton").addEventListener("click", () => {
+        state.miReloginExpanded = true;
+        renderMiStatus(state.miStatus);
+        el("miAccount").focus();
       });
       el("miLoginButton").addEventListener("click", loginMiWithWebVerification);
       el("miWebLoginButton").addEventListener("click", loginMi);
@@ -2163,11 +2436,11 @@ function renderAdminHtml(): string {
       el("searchButton").addEventListener("click", searchMusic);
       el("refreshSourcesButton").addEventListener("click", () => run(loadSources));
       el("testToneButton").addEventListener("click", playTestTone);
-      el("playbackStateButton").addEventListener("click", () => run(loadPlaybackState));
-      el("quickRefreshDevices").addEventListener("click", () => run(refreshDevices));
-      el("quickRefreshMi").addEventListener("click", () => run(refreshMiStatus));
-      el("quickReloadConfig").addEventListener("click", () => run(loadConfig));
-      el("quickRefreshStats").addEventListener("click", () => run(loadListeningStats));
+      document.querySelectorAll("[data-scroll-target]").forEach((button) => {
+        button.addEventListener("click", () => {
+          el(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
       window.addEventListener("message", (event) => {
         if (event.origin !== window.location.origin) return;
         if (event.data?.type !== "hmusic-mi-web-verification-complete") return;
