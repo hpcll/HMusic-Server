@@ -71,6 +71,7 @@ const configPatchSchema = z
       )
       .max(16)
       .optional(),
+    libraryScanIntervalMinutes: z.number().int().min(0).max(10080).optional(),
   })
   .strict();
 

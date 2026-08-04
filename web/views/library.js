@@ -21,6 +21,17 @@ const GROUP_DIMS = [
   { by: "folder", label: "文件夹", emptyName: "（根目录）" },
 ];
 
+// 将扫描完成时间转换为便于阅读的中文相对时间。
+function relativeTime(ts) {
+  const elapsedMs = Math.max(0, Date.now() - Number(ts));
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 60_000) return "刚刚";
+  const minutes = Math.floor(elapsedMs / 60_000);
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.floor(hours / 24)} 天前`;
+}
+
 export const LibraryView = {
   setup() {
     const items = ref([]);
@@ -335,6 +346,11 @@ export const LibraryView = {
       ]);
     }
 
+    function lastScanTime() {
+      if (scan.value?.status === "scanning" || !scan.value?.finishedAt) return null;
+      return h("div", { class: "muted" }, `上次扫描：${relativeTime(scan.value.finishedAt)}`);
+    }
+
     function trackRow(item) {
       return h("li", { key: item.id, class: "track-row" }, [
         h("div", {
@@ -423,6 +439,7 @@ export const LibraryView = {
         ]),
         statusBar(),
         dimTabs(),
+        lastScanTime(),
         ...(dim ? [renderGroups(dim)] : trackList({ withSearch: true })),
       ]);
     }

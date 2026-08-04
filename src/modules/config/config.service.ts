@@ -34,6 +34,8 @@ export type RuntimeConfig = {
   // NAS 存量音乐目录（绝对路径）：扫描器只读遍历入库，不改动原文件。
   // dataDir/music 始终扫描，无需在此重复声明。
   libraryDirs: string[];
+  // 曲库自动扫描间隔（分钟）：0 表示关闭。
+  libraryScanIntervalMinutes: number;
 };
 
 export const defaultRuntimeConfig: RuntimeConfig = {
@@ -46,6 +48,7 @@ export const defaultRuntimeConfig: RuntimeConfig = {
   extraPlayMusicModels: [],
   announceTracks: false,
   libraryDirs: [],
+  libraryScanIntervalMinutes: 0,
 };
 
 const configKey = "runtime";

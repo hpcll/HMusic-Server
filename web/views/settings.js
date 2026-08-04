@@ -294,6 +294,7 @@ const ConfigSection = {
     const config = ref(null);
     const extraModels = ref("");
     const libraryDirs = ref(""); // 多行文本，一行一个绝对路径（NAS 挂载点）
+    const libraryScanIntervalMinutes = ref(0);
     const saving = ref(false);
     const loading = ref(true);
     const loadError = ref("");
@@ -305,6 +306,7 @@ const ConfigSection = {
         config.value = await api("/config");
         extraModels.value = (config.value.extraPlayMusicModels || []).join(", ");
         libraryDirs.value = (config.value.libraryDirs || []).join("\n");
+        libraryScanIntervalMinutes.value = config.value.libraryScanIntervalMinutes ?? 0;
       } catch (error) {
         loadError.value = error.message || "加载失败";
       } finally {
@@ -324,11 +326,13 @@ const ConfigSection = {
             resolveStrategy: config.value.resolveStrategy,
             extraPlayMusicModels: parseModels(extraModels.value),
             libraryDirs: parseDirs(libraryDirs.value),
+            libraryScanIntervalMinutes: parseScanInterval(libraryScanIntervalMinutes.value),
           },
         });
         config.value = next;
         extraModels.value = (next.extraPlayMusicModels || []).join(", ");
         libraryDirs.value = (next.libraryDirs || []).join("\n");
+        libraryScanIntervalMinutes.value = next.libraryScanIntervalMinutes ?? 0;
         toast("配置已保存", "success");
       } catch (error) {
         toast(error.message, "error");
@@ -393,6 +397,19 @@ const ConfigSection = {
               h("small", { class: "hint" },
                 "服务器能访问的目录（如 NAS 挂载点），保存后到曲库页扫描即可入库；上传的音乐另存内置目录，无需配置。"),
             ]),
+            h("label", { class: "field" }, [
+              "自动扫描间隔（分钟）",
+              h("input", {
+                type: "number",
+                min: 0,
+                step: 1,
+                placeholder: "0 = 关闭",
+                value: libraryScanIntervalMinutes.value,
+                onInput: (e) => (libraryScanIntervalMinutes.value = e.target.value),
+              }),
+              h("small", { class: "hint" },
+                "定期重扫音乐库目录，发现直接放进 NAS 的新文件。会唤醒休眠的硬盘，按需开启。"),
+            ]),
             h("button", {
               class: "primary-btn",
               disabled: saving.value,
@@ -434,6 +451,12 @@ function parseDirs(value) {
       seen.add(line);
       return true;
     });
+}
+
+// 自动扫描间隔必须是非负数字，输入异常时按关闭处理。
+function parseScanInterval(value) {
+  const minutes = Number(value);
+  return Number.isFinite(minutes) && minutes >= 0 ? minutes : 0;
 }
 
 // ===== 链路诊断子页 =====
