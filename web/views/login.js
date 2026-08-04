@@ -41,9 +41,10 @@ export const LoginView = {
 
     return () =>
       h("div", { class: "login-page" }, [
-        h("div", { class: "login-card" }, [
+        h("div", { class: "login-panel" }, [
           h("div", { class: "login-brand" }, [
-            h("img", { class: "login-logo", src: "/app/assets/logo-wordmark.png", alt: "HMusic" }),
+            h("img", { class: "login-mark", src: "/app/assets/favicon-64.png", alt: "" }),
+            h("div", { class: "login-name" }, "HMusic"),
           ]),
           h(
             "p",
@@ -74,6 +75,7 @@ export const LoginView = {
             { class: "primary-btn", disabled: busy.value, onClick: submit },
             busy.value ? "处理中…" : isSetup.value ? "创建并登录" : "登录",
           ),
+          h("p", { class: "login-foot" }, "自托管家庭音乐服务"),
         ]),
       ]);
   },

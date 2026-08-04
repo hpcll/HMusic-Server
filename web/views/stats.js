@@ -1,6 +1,7 @@
 import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
+import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
 import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 
 // 听歌统计页：把 play_history 的聚合结果可视化。
@@ -8,16 +9,18 @@ import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 export const StatsView = {
   setup() {
     const stats = ref(null);
-    const loading = ref(false);
+    const loading = ref(true);
+    const loadError = ref("");
     const actingKey = ref("");
 
     async function load() {
       loading.value = true;
+      loadError.value = "";
       try {
         const result = await api("/stats");
         stats.value = result.stats;
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
       } finally {
         loading.value = false;
       }
@@ -45,14 +48,19 @@ export const StatsView = {
     onMounted(load);
 
     return () => {
-      if (loading.value && !stats.value) {
-        return view([h("div", { class: "muted center" }, "统计加载中…")]);
+      if (loadError.value) {
+        return view([ErrorState({ message: loadError.value, onRetry: load })]);
+      }
+      if (loading.value) {
+        return view([LoadingState({ label: "统计加载中…" })]);
       }
       const s = stats.value;
       if (!s || s.overview.totalPlays === 0) {
         return view([
-          h("div", { class: "muted center" },
-            "还没有听歌记录，放几首歌这里就热闹了"),
+          EmptyState({
+            icon: Icons.stats,
+            title: "还没有听歌记录，放几首歌这里就热闹了",
+          }),
         ]);
       }
       return view([

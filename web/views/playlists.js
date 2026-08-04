@@ -2,10 +2,11 @@ import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { Modal } from "/app/components/modal.js";
+import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
+import { openConfirm } from "/app/components/confirm.js";
 import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 import {
   openDownloadPicker,
-  renderDownloadPicker,
   refreshDownloadedKeys,
   downloadedBadge,
   downloadedList,
@@ -23,13 +24,19 @@ export const PlaylistsView = {
     const importOpen = ref(false); // 「导入歌单」弹窗
     const importUrl = ref(""); // 粘贴的分享链接
     const importing = ref(false);
+    const loading = ref(true);
+    const loadError = ref("");
 
     async function loadList() {
+      loading.value = true;
+      loadError.value = "";
       try {
         const result = await api("/playlists");
         playlists.value = result.playlists || [];
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
+      } finally {
+        loading.value = false;
       }
     }
 
@@ -107,10 +114,17 @@ export const PlaylistsView = {
       }
     }
 
-    async function deletePlaylist(id, event) {
+    async function deletePlaylist(playlist, event) {
       event.stopPropagation();
+      const confirmed = await openConfirm({
+        title: "删除歌单",
+        message: `「${playlist.name}」及其收录记录将被删除，无法恢复。`,
+        confirmText: "删除",
+        danger: true,
+      });
+      if (!confirmed) return;
       try {
-        await api(`/playlists/${id}`, { method: "DELETE" });
+        await api(`/playlists/${playlist.id}`, { method: "DELETE" });
         await loadList();
         toast("歌单已删除", "success");
       } catch (error) {
@@ -209,9 +223,17 @@ export const PlaylistsView = {
             ]),
           ]),
         ]),
-        playlists.value.length === 0
-          ? h("div", { class: "muted center" }, "还没有歌单，创建一个吧")
-          : h("div", { class: "playlist-grid" },
+        loadError.value
+          ? ErrorState({ message: loadError.value, onRetry: loadList })
+          : loading.value
+            ? LoadingState()
+            : playlists.value.length === 0
+              ? EmptyState({
+                  icon: Icons.playlists,
+                  title: "还没有歌单",
+                  hint: "创建一个，或粘贴分享链接导入",
+                })
+              : h("div", { class: "playlist-grid" },
               playlists.value.map((p) =>
                 h("div", { key: p.id, class: "playlist-card card", onClick: () => openDetail(p.id) }, [
                   h("div", { class: "pl-icon" }, Icons.playlists()),
@@ -223,7 +245,7 @@ export const PlaylistsView = {
                     h("button", { class: "icon-btn", title: "播放",
                       onClick: (e) => { e.stopPropagation(); playPlaylist(p.id); } }, Icons.play()),
                     h("button", { class: "icon-btn", title: "删除",
-                      onClick: (e) => deletePlaylist(p.id, e) }, Icons.close()),
+                      onClick: (e) => deletePlaylist(p, e) }, Icons.close()),
                   ]),
                 ]),
               ),
@@ -232,43 +254,36 @@ export const PlaylistsView = {
     }
 
     function renderCreateModal() {
-      return Modal(
-        {
-          title: "创建歌单",
-          onClose: () => (createOpen.value = false),
-          footer: [
-            h("button", { class: "secondary-btn", onClick: () => (createOpen.value = false) }, "取消"),
-            h("button", { class: "primary-btn", disabled: busy.value || !newName.value.trim(),
-              onClick: createPlaylist }, "创建"),
-          ],
-        },
-        [
+      return h(Modal, {
+        title: "创建歌单",
+        onClose: () => (createOpen.value = false),
+        footer: [
+          h("button", { class: "secondary-btn", onClick: () => (createOpen.value = false) }, "取消"),
+          h("button", { class: "primary-btn", disabled: busy.value || !newName.value.trim(),
+            onClick: createPlaylist }, "创建"),
+        ],
+      }, () => [
           h("input", {
             class: "modal-input",
             placeholder: "新歌单名称…",
             value: newName.value,
-            // autofocus 由浏览器在挂载时处理
-            ref: (el) => el && el.focus?.(),
             onInput: (e) => (newName.value = e.target.value),
             onKeyup: (e) => e.key === "Enter" && createPlaylist(),
           }),
-        ],
-      );
+      ]);
     }
 
     function renderImportModal() {
-      return Modal(
-        {
-          title: "导入歌单",
-          onClose: () => (importOpen.value = false),
-          footer: [
-            h("button", { class: "secondary-btn", disabled: importing.value,
-              onClick: () => (importOpen.value = false) }, "取消"),
-            h("button", { class: "primary-btn", disabled: importing.value || !importUrl.value.trim(),
-              onClick: importPlaylist }, importing.value ? "导入中…" : "开始导入"),
-          ],
-        },
-        [
+      return h(Modal, {
+        title: "导入歌单",
+        onClose: () => (importOpen.value = false),
+        footer: [
+          h("button", { class: "secondary-btn", disabled: importing.value,
+            onClick: () => (importOpen.value = false) }, "取消"),
+          h("button", { class: "primary-btn", disabled: importing.value || !importUrl.value.trim(),
+            onClick: importPlaylist }, importing.value ? "导入中…" : "开始导入"),
+        ],
+      }, () => [
           h("p", { class: "muted", style: { marginTop: "0" } },
             "粘贴 QQ音乐 / 酷我 / 网易云 的歌单分享链接，最多导入 500 首。"),
           h("textarea", {
@@ -276,11 +291,9 @@ export const PlaylistsView = {
             rows: 3,
             placeholder: "粘贴歌单链接或整段分享文案…",
             value: importUrl.value,
-            ref: (el) => el && el.focus?.(),
             onInput: (e) => (importUrl.value = e.target.value),
           }),
-        ],
-      );
+      ]);
     }
 
     function renderDetail() {
@@ -295,7 +308,11 @@ export const PlaylistsView = {
         h("h2", { class: "view-title" }, d.name),
         d.description ? h("p", { class: "muted" }, d.description) : null,
         items.length === 0
-          ? h("div", { class: "muted center" }, "歌单是空的，在搜索里加歌到队列或歌单")
+          ? EmptyState({
+              icon: Icons.note,
+              title: "歌单是空的",
+              hint: "在搜索里把歌加进歌单",
+            })
           : h("ul", { class: "track-list track-cols" },
               items.map((it, i) =>
                 h("li", { key: it.id, class: "track-row" }, [
@@ -314,7 +331,6 @@ export const PlaylistsView = {
                 ]),
               ),
             ),
-        renderDownloadPicker(),
       ]);
     }
 
@@ -331,7 +347,11 @@ export const PlaylistsView = {
         h("h2", { class: "view-title" }, "已下载"),
         h("p", { class: "muted" }, "本地缓存的音乐，播放不依赖网络音源、永不过期"),
         items.length === 0
-          ? h("div", { class: "muted center" }, "还没有下载的音乐，在搜索/歌单/榜单里点下载图标")
+          ? EmptyState({
+              icon: Icons.download,
+              title: "还没有下载的音乐",
+              hint: "在搜索/歌单/榜单里点下载图标",
+            })
           : h("ul", { class: "track-list track-cols" },
               items.map((d, i) =>
                 h("li", { key: d.id, class: "track-row" }, [

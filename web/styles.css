@@ -21,6 +21,9 @@
   --ink-hover: #000000;
   --accent: #21b0a5;
   --danger: #b91c1c;
+  --warn: #c99700;
+  --fav: #e0245e;
+  --overlay: rgba(0, 0, 0, 0.42);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-pop: 7px 15px 36px 4px rgba(0, 0, 0, 0.1);
   --radius: 10px;
@@ -43,6 +46,10 @@
     --ink: #e6e6e9;
     --ink-hover: #ffffff;
     --accent: #2ec4b8;
+    --danger: #ef5350; /* 亮色的 #b91c1c 在深色面板上对比度不足 AA，暗色单独调亮 */
+    --warn: #d9a916;
+    --fav: #f0568a;
+    --overlay: rgba(0, 0, 0, 0.6);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-pop: 7px 15px 36px 4px rgba(0, 0, 0, 0.45);
   }
@@ -462,30 +469,82 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   flex-shrink: 0;
 }
 .dot-playing { background: var(--accent); }
-.dot-paused { background: #c99700; }
+.dot-paused { background: var(--warn); }
 .dot-idle, .dot-stopped { background: var(--muted); }
 .dot-error { background: var(--danger); }
 
-/* ============ 登录页 ============ */
-.login-page { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
-.login-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 40px 34px;
-  box-shadow: var(--shadow-pop);
-  width: 100%;
-  max-width: 380px;
+/* ============ 反馈状态 ============ */
+.state-block {
   display: grid;
-  gap: 16px;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 48px 16px;
+  text-align: center;
+}
+.state-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+}
+.state-icon svg { width: 28px; height: 28px; opacity: 0.7; }
+.state-title {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--muted-2);
+}
+.state-hint { font-size: 13px; color: var(--muted); }
+.state-action { margin-top: 6px; }
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--text-strong);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+
+/* ============ 登录页 ============ */
+/* 纸面直落，无浮卡：品牌表达与侧栏同源（音符 mark + 衬线字），
+   青绿只留给 mark 本身，不再整块铺开。 */
+.login-page { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
+.login-panel {
+  width: 100%;
+  max-width: 340px;
+  display: grid;
+  gap: 14px;
 }
 .login-brand {
   display: grid;
-  place-items: center;
-  padding: 4px 0 2px;
+  justify-items: center;
+  gap: 10px;
+  padding-bottom: 4px;
 }
-.login-logo { width: 168px; height: auto; }
-.login-sub { color: var(--muted); text-align: center; margin: 0 0 8px; font-size: 13.5px; }
+.login-mark { width: 56px; height: 56px; object-fit: contain; }
+.login-name {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+.login-sub { color: var(--muted); text-align: center; margin: 0 0 10px; font-size: 13.5px; }
+.login-panel .primary-btn { width: 100%; padding: 11px 18px; margin-top: 4px; }
+.login-foot {
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+  margin: 18px 0 0;
+  letter-spacing: 0.04em;
+}
 
 /* ============ 播放页（大封面 + 同步歌词双栏） ============ */
 /* 内容垂直居中占满视口高度（否则整块顶在上方，下半屏全空，看着没居中）；
@@ -632,8 +691,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .lyrics-placeholder-sub { font-size: 13px; color: var(--muted); }
 
 /* 收藏键：常态弱化，收藏后红心 */
-.ctrl-fav.active { color: #e0245e; border-color: color-mix(in srgb, #e0245e 45%, var(--line)); }
-.ctrl-fav.active:hover { border-color: #e0245e; }
+.ctrl-fav.active { color: var(--fav); border-color: color-mix(in srgb, var(--fav) 45%, var(--line)); }
+.ctrl-fav.active:hover { border-color: var(--fav); }
 @media (max-width: 1023px) {
   /* 窄屏播放页单屏化：不再内联歌词栏（收成歌词条，np-lyrics 只剩歌词页在用
      且被 .lyrics-page 覆写），封面限高保证
@@ -1148,6 +1207,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .qr-idle, .qr-live, .qr-done { display: grid; gap: 12px; justify-items: center; }
 .qr-box {
   width: 210px; height: 210px;
+  /* 二维码必须保持白底，暗色模式下染底会降低识别率。 */
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1214,7 +1274,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--overlay);
   backdrop-filter: blur(2px);
 }
 .modal-card {

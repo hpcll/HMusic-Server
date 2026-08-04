@@ -88,28 +88,26 @@ async function confirmDownload() {
   }
 }
 
-// 各页在根节点末尾挂上 renderDownloadPicker()，弹窗才有处渲染。
+// App 根统一挂载一次，避免各业务视图重复同一份弹窗模板。
 export function renderDownloadPicker() {
   if (!pickerTrack.value) return null;
   const track = pickerTrack.value;
-  return Modal(
-    {
-      title: "下载音质",
-      onClose: () => (pickerTrack.value = null),
-      footer: [
-        h("button", {
-          class: "secondary-btn",
-          disabled: busy.value,
-          onClick: () => (pickerTrack.value = null),
-        }, "取消"),
-        h("button", {
-          class: "primary-btn",
-          disabled: busy.value,
-          onClick: confirmDownload,
-        }, busy.value ? "提交中…" : "开始下载"),
-      ],
-    },
-    [
+  return h(Modal, {
+    title: "下载音质",
+    onClose: () => (pickerTrack.value = null),
+    footer: [
+      h("button", {
+        class: "secondary-btn",
+        disabled: busy.value,
+        onClick: () => (pickerTrack.value = null),
+      }, "取消"),
+      h("button", {
+        class: "primary-btn",
+        disabled: busy.value,
+        onClick: confirmDownload,
+      }, busy.value ? "提交中…" : "开始下载"),
+    ],
+  }, () => [
       h("div", { class: "picker-song muted" },
         `${track.title} · ${track.artist || "未知"}`),
       h("div", { class: "quality-grid" },
@@ -125,6 +123,5 @@ export function renderDownloadPicker() {
         ),
       ),
       h("p", { class: "hint" }, "所选音质源站没有时会自动降档，下载列表里可见实际档位。"),
-    ],
-  );
+  ]);
 }

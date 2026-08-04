@@ -10,6 +10,9 @@ import { PlaylistsView } from "/app/views/playlists.js";
 import { ChartsView } from "/app/views/charts.js";
 import { StatsView } from "/app/views/stats.js";
 import { SettingsView } from "/app/views/settings.js";
+import { renderDownloadPicker } from "/app/download.js";
+import { renderPlaylistPicker } from "/app/components/playlist-picker.js";
+import { renderConfirm } from "/app/components/confirm.js";
 
 // 播放模式全集：队列页 tabs 与播放页主控模式键共用（顺序即模式键的轮换序）。
 export const PLAY_MODES = [
@@ -320,6 +323,9 @@ const App = {
       if (route.immersive) {
         return h("div", { class: "app-shell" }, [
           h(route.component),
+          renderDownloadPicker(),
+          renderPlaylistPicker(),
+          renderConfirm(),
           toastEl(),
         ]);
       }
@@ -329,6 +335,9 @@ const App = {
         h(MobileTopBar),
         h("div", { class: "content" }, [h(route.component)]),
         h(MobileNav),
+        renderDownloadPicker(),
+        renderPlaylistPicker(),
+        renderConfirm(),
         toastEl(),
       ]);
     };

@@ -1,10 +1,10 @@
 import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
+import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
 import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 import {
   openDownloadPicker,
-  renderDownloadPicker,
   refreshDownloadedKeys,
   downloadedBadge,
 } from "/app/download.js";
@@ -25,16 +25,22 @@ export const ChartsView = {
     const previews = ref({}); // 榜单 id → 前 3 首（null=拉取失败，回退显示描述）
     const active = ref(null); // 当前打开的榜单摘要；null = 卡片墙
     const chart = ref(null); // 当前榜单详情
-    const loading = ref(false);
+    const loading = ref(true);
+    const loadError = ref("");
+    const detailLoading = ref(false);
     const actingRank = ref(0);
 
     async function loadCharts() {
+      loading.value = true;
+      loadError.value = "";
       try {
         const result = await api("/charts");
         charts.value = result.charts || [];
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
         return;
+      } finally {
+        loading.value = false;
       }
       refreshDownloadedKeys();
       // 并发预取各榜前 3 首做卡片预览，顺带焐热后端 6h 缓存（进详情秒开）。
@@ -55,14 +61,14 @@ export const ChartsView = {
     async function openChart(summary) {
       active.value = summary;
       chart.value = null;
-      loading.value = true;
+      detailLoading.value = true;
       try {
         chart.value = await api(`/charts/${summary.id}`);
       } catch (error) {
         toast(error.message, "error");
         active.value = null; // 拉取失败回卡片墙
       } finally {
-        loading.value = false;
+        detailLoading.value = false;
       }
     }
 
@@ -143,39 +149,41 @@ export const ChartsView = {
 
     onMounted(loadCharts);
 
-    return () =>
-      h("div", null, [
-        active.value ? renderDetail() : renderWall(),
-        renderDownloadPicker(),
-      ]);
+    return () => active.value ? renderDetail() : renderWall();
 
     // ── 卡片墙：按来源分组的榜单入口，卡片直接亮前 3 首 ──
     function renderWall() {
       return h("main", { class: "view charts-view" }, [
         h("h2", { class: "view-title" }, "榜单"),
-        ...GROUPS.map((group) => {
-          const items = charts.value.filter((c) => c.kind === group.kind);
-          if (!items.length) return null;
-          return h("section", { key: group.kind, class: "chart-group" }, [
-            h("div", { class: "chart-group-label" }, group.label),
-            h("div", { class: "chart-wall" },
-              items.map((c) =>
-                h("div", {
-                  key: c.id,
-                  class: "card chart-card",
-                  onClick: () => openChart(c),
-                }, [
-                  h("div", { class: "chart-card-head" }, [
-                    renderCardCover(c),
-                    h("div", { class: "chart-card-name" }, c.name),
-                  ]),
-                  renderCardPreview(c),
-                  h("div", { class: "chart-card-more" }, "查看全部 ›"),
-                ]),
-              ),
-            ),
-          ]);
-        }),
+        loadError.value
+          ? ErrorState({ message: loadError.value, onRetry: loadCharts })
+          : loading.value
+            ? LoadingState()
+            : charts.value.length === 0
+              ? EmptyState({ icon: Icons.charts, title: "暂无榜单" })
+              : GROUPS.map((group) => {
+                  const items = charts.value.filter((c) => c.kind === group.kind);
+                  if (!items.length) return null;
+                  return h("section", { key: group.kind, class: "chart-group" }, [
+                    h("div", { class: "chart-group-label" }, group.label),
+                    h("div", { class: "chart-wall" },
+                      items.map((c) =>
+                        h("div", {
+                          key: c.id,
+                          class: "card chart-card",
+                          onClick: () => openChart(c),
+                        }, [
+                          h("div", { class: "chart-card-head" }, [
+                            renderCardCover(c),
+                            h("div", { class: "chart-card-name" }, c.name),
+                          ]),
+                          renderCardPreview(c),
+                          h("div", { class: "chart-card-more" }, "查看全部 ›"),
+                        ]),
+                      ),
+                    ),
+                  ]);
+                }),
       ]);
     }
 
@@ -234,13 +242,15 @@ export const ChartsView = {
         active.value.description
           ? h("p", { class: "muted chart-desc" }, active.value.description)
           : null,
-        loading.value
-          ? h("div", { class: "muted center" }, "榜单加载中…")
+        detailLoading.value
+          ? LoadingState({ label: "榜单加载中…" })
           : !chart.value || chart.value.entries.length === 0
-            ? h("div", { class: "muted center" },
-                active.value.id === "family"
+            ? EmptyState({
+                icon: Icons.charts,
+                title: active.value.id === "family"
                   ? "还没有播放记录，放几首歌就有家庭热播榜了"
-                  : "榜单是空的")
+                  : "榜单是空的",
+              })
             : h("ol", { class: "track-list chart-list track-cols" },
                 chart.value.entries.map(renderEntry)),
       ]);

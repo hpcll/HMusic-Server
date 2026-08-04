@@ -1,10 +1,11 @@
 import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
+import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
+import { openConfirm } from "/app/components/confirm.js";
 import { refreshPlayback, toast, primeLocalAudio, PLAY_MODES } from "/app/main.js";
 import {
   openDownloadPicker,
-  renderDownloadPicker,
   refreshDownloadedKeys,
   downloadedBadge,
 } from "/app/download.js";
@@ -14,12 +15,18 @@ export const QueueView = {
   setup() {
     const queue = ref(null);
     const busy = ref(false);
+    const loading = ref(true);
+    const loadError = ref("");
 
     async function load() {
+      loading.value = true;
+      loadError.value = "";
       try {
         queue.value = await api("/queue");
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
+      } finally {
+        loading.value = false;
       }
     }
 
@@ -72,6 +79,15 @@ export const QueueView = {
     }
 
     async function clear() {
+      const count = queue.value?.items.length || 0;
+      if (!count) return;
+      const confirmed = await openConfirm({
+        title: "清空队列",
+        message: `${count} 首歌将从播放队列移除。`,
+        confirmText: "清空",
+        danger: true,
+      });
+      if (!confirmed) return;
       try {
         queue.value = await api("/queue/clear", { method: "POST" });
         toast("队列已清空", "success");
@@ -106,9 +122,17 @@ export const QueueView = {
           ),
         ),
 
-        items.length === 0
-          ? h("div", { class: "muted center" }, "队列是空的，去搜索里加几首歌吧")
-          : h("ul", { class: "track-list" },
+        loadError.value
+          ? ErrorState({ message: loadError.value, onRetry: load })
+          : loading.value
+            ? LoadingState()
+            : items.length === 0
+              ? EmptyState({
+                  icon: Icons.queue,
+                  title: "队列是空的",
+                  hint: "去搜索里加几首歌吧",
+                })
+              : h("ul", { class: "track-list" },
               items.map((it, i) =>
                 h("li", {
                   key: it.id,
@@ -138,7 +162,6 @@ export const QueueView = {
                 ]),
               ),
             ),
-        renderDownloadPicker(),
       ]);
     };
   },

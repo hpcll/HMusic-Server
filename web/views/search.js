@@ -1,11 +1,11 @@
 import { ref, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
-import { Modal } from "/app/components/modal.js";
+import { EmptyState, LoadingState } from "/app/components/feedback.js";
+import { openPlaylistPicker } from "/app/components/playlist-picker.js";
 import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 import {
   openDownloadPicker,
-  renderDownloadPicker,
   refreshDownloadedKeys,
   downloadedBadge,
 } from "/app/download.js";
@@ -20,13 +20,6 @@ const searched = ref(false);
 export const SearchView = {
   setup() {
     const actingId = ref("");
-
-    // ── 加入歌单弹窗 ──
-    const pickerTrack = ref(null); // 非空时展示歌单选择器
-    const playlists = ref([]);
-    const playlistsLoading = ref(false);
-    const newName = ref("");
-    const pickBusy = ref(false);
 
     async function doSearch() {
       const q = keyword.value.trim();
@@ -79,109 +72,6 @@ export const SearchView = {
 
     onMounted(refreshDownloadedKeys);
 
-    // ── 加入歌单 ──
-    async function openPicker(track) {
-      pickerTrack.value = track;
-      newName.value = "";
-      playlistsLoading.value = true;
-      try {
-        const result = await api("/playlists");
-        playlists.value = result.playlists || [];
-      } catch (error) {
-        toast(error.message, "error");
-        playlists.value = [];
-      } finally {
-        playlistsLoading.value = false;
-      }
-    }
-
-    function closePicker() {
-      pickerTrack.value = null;
-    }
-
-    async function addToPlaylist(playlistId) {
-      if (pickBusy.value) return;
-      pickBusy.value = true;
-      try {
-        await api(`/playlists/${playlistId}/tracks`, {
-          method: "POST",
-          body: { track: pickerTrack.value },
-        });
-        toast(`已加入歌单：${pickerTrack.value.title}`, "success");
-        closePicker();
-      } catch (error) {
-        toast(error.message, "error");
-      } finally {
-        pickBusy.value = false;
-      }
-    }
-
-    // 新建歌单并把当前歌曲加进去（快速通道）。
-    async function createAndAdd() {
-      const name = newName.value.trim();
-      if (!name || pickBusy.value) return;
-      pickBusy.value = true;
-      try {
-        const created = await api("/playlists", {
-          method: "POST",
-          body: { name },
-        });
-        const id = created.playlist?.id;
-        await api(`/playlists/${id}/tracks`, {
-          method: "POST",
-          body: { track: pickerTrack.value },
-        });
-        toast(`已创建「${name}」并加入歌曲`, "success");
-        closePicker();
-      } catch (error) {
-        toast(error.message, "error");
-      } finally {
-        pickBusy.value = false;
-      }
-    }
-
-    function renderPicker() {
-      return Modal(
-        {
-          title: "加入歌单",
-          onClose: closePicker,
-        },
-        [
-          h("div", { class: "picker-song muted" },
-            `${pickerTrack.value.title} · ${pickerTrack.value.artist || "未知"}`),
-          h("div", { class: "picker-create" }, [
-            h("input", {
-              class: "modal-input",
-              placeholder: "新建歌单…",
-              value: newName.value,
-              onInput: (e) => (newName.value = e.target.value),
-              onKeyup: (e) => e.key === "Enter" && createAndAdd(),
-            }),
-            h("button", {
-              class: "primary-btn", disabled: pickBusy.value || !newName.value.trim(),
-              onClick: createAndAdd,
-            }, [Icons.plus(), "新建"]),
-          ]),
-          playlistsLoading.value
-            ? h("div", { class: "muted center" }, "加载中…")
-            : playlists.value.length === 0
-              ? h("div", { class: "muted center" }, "还没有歌单，上面新建一个吧")
-              : h("ul", { class: "picker-list" },
-                  playlists.value.map((p) =>
-                    h("li", {
-                      key: p.id, class: "picker-item",
-                      onClick: () => addToPlaylist(p.id),
-                    }, [
-                      h("span", { class: "pl-icon" }, Icons.playlists()),
-                      h("span", { class: "picker-name" }, p.name),
-                      h("span", { class: "muted" }, `${p.trackCount} 首`),
-                    ]),
-                  ),
-                ),
-        ],
-      );
-    }
-
     return () =>
       h("main", { class: "view search-view" }, [
         h("h2", { class: "view-title" }, "搜索"),
@@ -197,10 +87,11 @@ export const SearchView = {
         ]),
 
         searching.value
-          ? h("div", { class: "muted center" }, "搜索中…")
+          ? LoadingState({ label: "搜索中…" })
           : tracks.value.length === 0
-            ? h("div", { class: "muted center" },
-                searched.value ? "没有找到结果" : "输入关键词开始搜索")
+            ? EmptyState(searched.value
+                ? { icon: Icons.search, title: "没有找到结果", hint: "换个关键词试试" }
+                : { icon: Icons.search, title: "输入关键词开始搜索" })
             : h("ul", { class: "track-list" },
                 tracks.value.map((t) =>
                   h("li", { key: t.id, class: "track-row" }, [
@@ -221,7 +112,7 @@ export const SearchView = {
                       }, Icons.plus()),
                       h("button", {
                         class: "icon-btn",
-                        title: "加入歌单", onClick: () => openPicker(t),
+                        title: "加入歌单", onClick: () => openPlaylistPicker(t),
                       }, Icons.playlists()),
                       h("button", {
                         class: "icon-btn", disabled: actingId.value === t.id,
@@ -231,8 +122,6 @@ export const SearchView = {
                   ]),
                 ),
               ),
-        pickerTrack.value ? renderPicker() : null,
-        renderDownloadPicker(),
       ]);
   },
 };

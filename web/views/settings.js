@@ -2,6 +2,7 @@ import { ref, onMounted, onUnmounted, h } from "vue";
 import { api, setToken } from "/app/api.js";
 import { toast } from "/app/main.js";
 import { Icons } from "/app/icons.js";
+import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
 import { MiAccountSection } from "/app/views/settings-mi.js";
 import { SourcesSection, TracksSection, DownloadsSection } from "/app/views/settings-sources.js";
 
@@ -10,6 +11,11 @@ import { SourcesSection, TracksSection, DownloadsSection } from "/app/views/sett
 // 两种布局由同一份状态驱动：桌面下 section 恒有值，窄屏下 null 表示菜单页。
 // 菜单行右侧显示实时摘要（登录态/设备/插件数），一眼看清系统状态。
 const DESKTOP_QUERY = "(min-width: 860px)";
+const STRATEGY_LABELS = {
+  qqFirst: "QQ 优先",
+  kuwoFirst: "酷我优先",
+  neteaseFirst: "网易云优先",
+};
 
 export const SettingsView = {
   setup() {
@@ -120,12 +126,6 @@ export const SettingsView = {
   },
 };
 
-const STRATEGY_LABELS = {
-  qqFirst: "QQ 优先",
-  kuwoFirst: "酷我优先",
-  neteaseFirst: "网易云优先",
-};
-
 const GROUPS = [
   {
     title: "账号与设备",
@@ -162,13 +162,19 @@ const DevicesSection = {
   setup() {
     const devices = ref([]);
     const refreshing = ref(false);
+    const loading = ref(true);
+    const loadError = ref("");
 
     async function load() {
+      loading.value = true;
+      loadError.value = "";
       try {
         const result = await api("/devices");
         devices.value = result.devices || [];
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
+      } finally {
+        loading.value = false;
       }
     }
 
@@ -215,9 +221,17 @@ const DevicesSection = {
           disabled: refreshing.value,
           onClick: refresh,
         }, refreshing.value ? "刷新中…" : "从小米账号刷新设备"),
-        devices.value.length === 0
-          ? h("div", { class: "muted center" }, "暂无设备，请先登录小米账号后刷新")
-          : h("div", { class: "device-list" },
+        loadError.value
+          ? ErrorState({ message: loadError.value, onRetry: load })
+          : loading.value
+            ? LoadingState()
+            : devices.value.length === 0
+              ? EmptyState({
+                  icon: Icons.speaker,
+                  title: "暂无设备",
+                  hint: "先登录小米账号后刷新",
+                })
+              : h("div", { class: "device-list" },
               devices.value.map((d) =>
                 h("button", {
                   key: d.id,
@@ -249,13 +263,19 @@ const ConfigSection = {
     const config = ref(null);
     const extraModels = ref("");
     const saving = ref(false);
+    const loading = ref(true);
+    const loadError = ref("");
 
     async function load() {
+      loading.value = true;
+      loadError.value = "";
       try {
         config.value = await api("/config");
         extraModels.value = (config.value.extraPlayMusicModels || []).join(", ");
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
+      } finally {
+        loading.value = false;
       }
     }
 
@@ -285,8 +305,12 @@ const ConfigSection = {
     onMounted(load);
 
     return () =>
-      config.value
-        ? h("section", { class: "card" }, [
+      loadError.value
+        ? ErrorState({ message: loadError.value, onRetry: load })
+        : loading.value
+          ? LoadingState()
+          : config.value
+            ? h("section", { class: "card" }, [
             h("label", { class: "field" }, [
               "服务端名称",
               h("input", {
@@ -303,16 +327,14 @@ const ConfigSection = {
             ]),
             h("label", { class: "field" }, [
               "搜索策略",
-              selectEl(config.value, "searchStrategy", [
-                ["qqFirst", "QQ 优先"], ["kuwoFirst", "酷我优先"], ["neteaseFirst", "网易云优先"],
-              ]),
+              selectEl(config.value, "searchStrategy", Object.entries(STRATEGY_LABELS)),
               h("small", { class: "hint" }, "决定聚合搜索结果里哪家平台的歌排在前面。"),
             ]),
             h("label", { class: "field" }, [
               "解析策略",
               selectEl(config.value, "resolveStrategy", [
-                ["originalFirst", "原始结果优先"], ["qqFirst", "QQ 优先"],
-                ["kuwoFirst", "酷我优先"], ["neteaseFirst", "网易云优先"],
+                ["originalFirst", "原始结果优先"],
+                ...Object.entries(STRATEGY_LABELS),
               ]),
               h("small", { class: "hint" }, "选某平台优先时，先在该平台匹配同一首歌取播放链接，失败回落歌曲原平台。"),
             ]),
@@ -330,8 +352,8 @@ const ConfigSection = {
               disabled: saving.value,
               onClick: save,
             }, saving.value ? "保存中…" : "保存配置"),
-          ])
-        : h("div", { class: "muted center" }, "加载中…");
+              ])
+            : ErrorState({ message: "配置加载失败", onRetry: load });
   },
 };
 

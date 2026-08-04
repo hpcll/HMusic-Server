@@ -1,6 +1,8 @@
 import { ref, onMounted, onUnmounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
+import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
+import { openConfirm } from "/app/components/confirm.js";
 import { toast } from "/app/main.js";
 
 // LX 音源插件子页：列表（开关/测试/编辑/更新/删除）
@@ -11,6 +13,8 @@ export const SourcesSection = {
     const sources = ref([]); // 带 health 状态
     const busy = ref(false);
     const updatingId = ref("");
+    const loading = ref(true);
+    const loadError = ref("");
 
     // 表单
     const formId = ref("");
@@ -22,6 +26,8 @@ export const SourcesSection = {
     const fetchingUrl = ref(false);
 
     async function load() {
+      loading.value = true;
+      loadError.value = "";
       try {
         const [pluginsResult, sourcesResult] = await Promise.all([
           api("/sources/lx-plugins"),
@@ -30,7 +36,9 @@ export const SourcesSection = {
         plugins.value = pluginsResult.plugins || [];
         sources.value = sourcesResult.sources || [];
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
+      } finally {
+        loading.value = false;
       }
     }
 
@@ -179,6 +187,13 @@ export const SourcesSection = {
     }
 
     async function deletePlugin(plugin) {
+      const confirmed = await openConfirm({
+        title: "删除插件",
+        message: `「${plugin.name}」将被移除，正在使用它的解析会失效。`,
+        confirmText: "删除",
+        danger: true,
+      });
+      if (!confirmed) return;
       try {
         await api(`/sources/lx-plugins/${encodeURIComponent(plugin.id)}`, {
           method: "DELETE",
@@ -194,9 +209,17 @@ export const SourcesSection = {
 
     return () =>
       h("div", { class: "section-body" }, [
-        plugins.value.length === 0
-          ? h("div", { class: "muted center" }, "还没有 LX 插件，在下方添加一个音源插件")
-          : h("div", { class: "section-body" },
+        loadError.value
+          ? ErrorState({ message: loadError.value, onRetry: load })
+          : loading.value
+            ? LoadingState()
+            : plugins.value.length === 0
+              ? EmptyState({
+                  icon: Icons.plugin,
+                  title: "还没有音源插件",
+                  hint: "用下方任一通道添加",
+                })
+              : h("div", { class: "section-body" },
               plugins.value.map((p) =>
                 h("section", { key: p.id, class: "card plugin-card" }, [
                   h("div", { class: "kv" }, [
@@ -332,15 +355,21 @@ function suggestPluginId(name, url) {
 export const DownloadsSection = {
   setup() {
     const items = ref([]);
+    const loading = ref(true);
+    const loadError = ref("");
     let timer = 0;
 
-    async function load() {
+    async function load(showLoading = true) {
+      if (showLoading) loading.value = true;
+      loadError.value = "";
       try {
         const result = await api("/downloads");
         items.value = result.downloads || [];
         scheduleRefresh();
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
+      } finally {
+        if (showLoading) loading.value = false;
       }
     }
 
@@ -349,15 +378,22 @@ export const DownloadsSection = {
       const active = items.value.some(
         (d) => d.status === "pending" || d.status === "downloading",
       );
-      if (active) timer = setInterval(load, 3000);
+      if (active) timer = setInterval(() => load(false), 3000);
     }
 
     async function remove(item) {
+      const confirmed = await openConfirm({
+        title: "删除本地文件",
+        message: `「${item.title}」的本地音频文件将从服务器磁盘删除。`,
+        confirmText: "删除",
+        danger: true,
+      });
+      if (!confirmed) return;
       try {
         await api(`/downloads/${encodeURIComponent(item.id)}`, {
           method: "DELETE",
         });
-        await load();
+        await load(false);
         toast("已删除本地文件", "success");
       } catch (error) {
         toast(error.message, "error");
@@ -370,14 +406,14 @@ export const DownloadsSection = {
           method: "POST",
           body: { track: item.track },
         });
-        await load();
+        await load(false);
         toast(`重新下载：${item.title}`, "success");
       } catch (error) {
         toast(error.message, "error");
       }
     }
 
-    onMounted(load);
+    onMounted(() => load());
     onUnmounted(() => clearInterval(timer));
 
     const STATUS_LABEL = {
@@ -398,9 +434,17 @@ export const DownloadsSection = {
         h("p", { class: "hint" },
           "下载到服务器本地的歌播放时直接走本地文件——不再依赖平台直链，永不过期。" +
           "在搜索结果里点下载图标即可加入。"),
-        items.value.length === 0
-          ? h("div", { class: "muted center" }, "还没有下载的音乐")
-          : h("ul", { class: "track-list card" },
+        loadError.value
+          ? ErrorState({ message: loadError.value, onRetry: () => load() })
+          : loading.value
+            ? LoadingState()
+            : items.value.length === 0
+              ? EmptyState({
+                  icon: Icons.download,
+                  title: "还没有下载的音乐",
+                  hint: "在搜索结果里点下载图标",
+                })
+              : h("ul", { class: "track-list card" },
               items.value.map((d) =>
                 h("li", { key: d.id, class: "track-row" }, [
                   h("div", { class: "track-info" }, [
@@ -442,13 +486,19 @@ export const TracksSection = {
     const artist = ref("");
     const url = ref("");
     const busy = ref(false);
+    const loading = ref(true);
+    const loadError = ref("");
 
     async function load() {
+      loading.value = true;
+      loadError.value = "";
       try {
         const config = await api("/config");
         tracks.value = config.manualTracks || [];
       } catch (error) {
-        toast(error.message, "error");
+        loadError.value = error.message || "加载失败";
+      } finally {
+        loading.value = false;
       }
     }
 
@@ -487,6 +537,14 @@ export const TracksSection = {
     }
 
     async function removeTrack(index) {
+      const track = tracks.value[index];
+      const confirmed = await openConfirm({
+        title: "删除曲目",
+        message: `「${track.title}」将从手工曲目移除。`,
+        confirmText: "删除",
+        danger: true,
+      });
+      if (!confirmed) return;
       try {
         await saveTracks(tracks.value.filter((_, i) => i !== index));
         toast("曲目已删除", "success");
@@ -499,9 +557,13 @@ export const TracksSection = {
 
     return () =>
       h("div", { class: "section-body" }, [
-        tracks.value.length === 0
-          ? h("div", { class: "muted center" }, "还没有手工曲目")
-          : h("ul", { class: "track-list card" },
+        loadError.value
+          ? ErrorState({ message: loadError.value, onRetry: load })
+          : loading.value
+            ? LoadingState()
+            : tracks.value.length === 0
+              ? EmptyState({ icon: Icons.file, title: "还没有手工曲目" })
+              : h("ul", { class: "track-list card" },
               tracks.value.map((t, i) =>
                 h("li", { key: `${t.url}-${i}`, class: "track-row" }, [
                   h("div", { class: "track-info" }, [
