@@ -1,6 +1,6 @@
-import { ref, onMounted, onUnmounted, h } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, h } from "vue";
 import { api, setToken } from "/app/api.js";
-import { toast } from "/app/main.js";
+import { router, go, toast } from "/app/main.js";
 import { Icons } from "/app/icons.js";
 import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
 import { MiAccountSection } from "/app/views/settings-mi.js";
@@ -8,7 +8,7 @@ import { SourcesSection, TracksSection, DownloadsSection } from "/app/views/sett
 
 // 设置中心。桌面（≥860px）：左菜单常驻 + 右内容区双栏，无需来回跳转；
 // 窄屏：保持「分组菜单 → 子页」两级（移动端设置 App 范式）。
-// 两种布局由同一份状态驱动：桌面下 section 恒有值，窄屏下 null 表示菜单页。
+// 两种布局由同一份路由状态驱动：桌面无参数时回落 mi，窄屏无参数时显示菜单页。
 // 菜单行右侧显示实时摘要（登录态/设备/插件数），一眼看清系统状态。
 const DESKTOP_QUERY = "(min-width: 860px)";
 const STRATEGY_LABELS = {
@@ -21,8 +21,7 @@ export const SettingsView = {
   setup() {
     const mq = window.matchMedia(DESKTOP_QUERY);
     const isDesktop = ref(mq.matches);
-    // 桌面默认选中第一项；窄屏默认停留在菜单页。
-    const section = ref(mq.matches ? "mi" : null);
+    const sectionKey = computed(() => ALL_ITEMS.some(i => i.key === router.params.s) ? router.params.s : null);
     const summary = ref({});
 
     async function loadSummary() {
@@ -35,7 +34,11 @@ export const SettingsView = {
       ]);
       const defaultDevice = (devices?.devices || []).find((d) => d.isDefault);
       summary.value = {
-        mi: mi?.loggedIn ? `已登录 ${mi.accountMasked || ""}` : "未登录",
+        mi: mi?.loggedIn
+          ? `已登录 ${mi.accountMasked || ""}`
+          : mi?.sessionExpired
+            ? "会话已失效"
+            : "未登录",
         devices: defaultDevice ? defaultDevice.name : `${devices?.devices?.length ?? 0} 台`,
         sources: `${plugins?.plugins?.length ?? 0} 个`,
         downloads: `${(downloads?.downloads || []).filter((d) => d.status === "done").length} 首`,
@@ -47,18 +50,23 @@ export const SettingsView = {
     }
 
     function open(key) {
-      section.value = key;
+      go("settings", { s: key });
     }
 
     function back() {
-      section.value = null;
-      loadSummary();
+      go("settings");
     }
 
     function onMqChange(e) {
       isDesktop.value = e.matches;
-      if (e.matches && !section.value) section.value = "mi";
     }
+
+    watch(
+      [() => router.name, sectionKey],
+      ([name, key]) => {
+        if (name === "settings" && key === null) loadSummary();
+      },
+    );
 
     onMounted(() => {
       loadSummary();
@@ -75,7 +83,7 @@ export const SettingsView = {
               group.items.map((item) =>
                 h("button", {
                   key: item.key,
-                  class: ["menu-row", { active: isDesktop.value && section.value === item.key }],
+                  class: ["menu-row", { active: isDesktop.value && (sectionKey.value || "mi") === item.key }],
                   onClick: () => open(item.key),
                 }, [
                   h("span", { class: "menu-icon" }, item.icon()),
@@ -93,7 +101,7 @@ export const SettingsView = {
     return () => {
       // 桌面：双栏（菜单 + 内容），永不进入单独子页。
       if (isDesktop.value) {
-        const def = ALL_ITEMS.find((item) => item.key === section.value) || ALL_ITEMS[0];
+        const def = ALL_ITEMS.find((item) => item.key === (sectionKey.value || "mi"));
         return h("main", { class: "view settings-view" }, [
           h("h2", { class: "view-title" }, "设置"),
           h("div", { class: "settings-grid" }, [
@@ -107,14 +115,14 @@ export const SettingsView = {
       }
 
       // 窄屏：菜单页 ↔ 子页。
-      if (section.value) {
-        const def = ALL_ITEMS.find((item) => item.key === section.value);
+      if (sectionKey.value) {
+        const def = ALL_ITEMS.find((item) => item.key === sectionKey.value);
         return h("main", { class: "view settings-view" }, [
           h("div", { class: "section-head" }, [
             h("button", { class: "secondary-btn", onClick: back }, "‹ 设置"),
             h("span", { class: "section-title" }, def?.label || ""),
           ]),
-          h(SECTION_COMPONENTS[section.value], { key: section.value }),
+          h(SECTION_COMPONENTS[sectionKey.value], { key: sectionKey.value }),
         ]);
       }
 
@@ -161,16 +169,23 @@ const ALL_ITEMS = GROUPS.flatMap((g) => g.items);
 const DevicesSection = {
   setup() {
     const devices = ref([]);
+    const miStatus = ref(null);
     const refreshing = ref(false);
     const loading = ref(true);
     const loadError = ref("");
+    const miInvalid = computed(() => !miStatus.value?.loggedIn);
+    const hasMiDevice = computed(() => devices.value.some((device) => device.type !== "browser"));
 
     async function load() {
       loading.value = true;
       loadError.value = "";
       try {
-        const result = await api("/devices");
+        const [result, status] = await Promise.all([
+          api("/devices"),
+          api("/mi/status").catch(() => null),
+        ]);
         devices.value = result.devices || [];
+        miStatus.value = status;
       } catch (error) {
         loadError.value = error.message || "加载失败";
       } finally {
@@ -216,6 +231,17 @@ const DevicesSection = {
 
     return () =>
       h("div", { class: "section-body" }, [
+        miInvalid.value && hasMiDevice.value
+          ? h("div", { class: "notice-bar" }, [
+              h("span", null, miStatus.value?.sessionExpired
+                ? "小米会话已失效，音箱暂时无法控制"
+                : "未登录小米账号，音箱暂时无法控制"),
+              h("button", {
+                class: "ghost-btn",
+                onClick: () => go("settings", { s: "mi" }),
+              }, "去登录 ›"),
+            ])
+          : null,
         h("button", {
           class: "secondary-btn",
           disabled: refreshing.value,
@@ -238,7 +264,12 @@ const DevicesSection = {
                   class: ["device-item", { active: d.isDefault }],
                   onClick: () => select(d),
                 }, [
-                  h("span", { class: `dot ${d.isOnline ? "dot-playing" : "dot-idle"}` }),
+                  // 小米会话无效时，缓存的音箱在线态已不可信；本机播放不受影响。
+                  h("span", {
+                    class: `dot ${d.type !== "browser" && miInvalid.value
+                      ? "dot-idle"
+                      : d.isOnline ? "dot-playing" : "dot-idle"}`,
+                  }),
                   h("span", null, [
                     h("div", null, d.name),
                     h("div", { class: "muted" }, d.type || ""),
@@ -262,6 +293,7 @@ const ConfigSection = {
   setup() {
     const config = ref(null);
     const extraModels = ref("");
+    const libraryDirs = ref(""); // 多行文本，一行一个绝对路径（NAS 挂载点）
     const saving = ref(false);
     const loading = ref(true);
     const loadError = ref("");
@@ -272,6 +304,7 @@ const ConfigSection = {
       try {
         config.value = await api("/config");
         extraModels.value = (config.value.extraPlayMusicModels || []).join(", ");
+        libraryDirs.value = (config.value.libraryDirs || []).join("\n");
       } catch (error) {
         loadError.value = error.message || "加载失败";
       } finally {
@@ -290,10 +323,12 @@ const ConfigSection = {
             searchStrategy: config.value.searchStrategy,
             resolveStrategy: config.value.resolveStrategy,
             extraPlayMusicModels: parseModels(extraModels.value),
+            libraryDirs: parseDirs(libraryDirs.value),
           },
         });
         config.value = next;
         extraModels.value = (next.extraPlayMusicModels || []).join(", ");
+        libraryDirs.value = (next.libraryDirs || []).join("\n");
         toast("配置已保存", "success");
       } catch (error) {
         toast(error.message, "error");
@@ -347,6 +382,17 @@ const ConfigSection = {
               }),
               h("small", { class: "hint" }, "某型号小爱直连播放没声音时才填，内置常见型号已适配。"),
             ]),
+            h("label", { class: "field" }, [
+              "音乐库目录（NAS）",
+              h("textarea", {
+                rows: 3,
+                placeholder: "/mnt/nas/music\n一行一个绝对路径",
+                value: libraryDirs.value,
+                onInput: (e) => (libraryDirs.value = e.target.value),
+              }),
+              h("small", { class: "hint" },
+                "服务器能访问的目录（如 NAS 挂载点），保存后到曲库页扫描即可入库；上传的音乐另存内置目录，无需配置。"),
+            ]),
             h("button", {
               class: "primary-btn",
               disabled: saving.value,
@@ -373,6 +419,19 @@ function parseModels(value) {
     .filter((item) => {
       if (!item || !/^[A-Z0-9]+$/.test(item) || seen.has(item)) return false;
       seen.add(item);
+      return true;
+    });
+}
+
+// 音乐库目录：按行拆分，去空白去重（路径校验交给服务端，不存在的目录扫描时自动忽略）。
+function parseDirs(value) {
+  const seen = new Set();
+  return (value || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line || seen.has(line)) return false;
+      seen.add(line);
       return true;
     });
 }

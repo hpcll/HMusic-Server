@@ -59,7 +59,8 @@ export const StatsView = {
         return view([
           EmptyState({
             icon: Icons.stats,
-            title: "还没有听歌记录，放几首歌这里就热闹了",
+            title: "还没有听歌记录",
+            hint: "放几首歌，这里就热闹了",
           }),
         ]);
       }

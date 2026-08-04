@@ -249,7 +249,12 @@ export const MiAccountSection = {
                   h("button", { class: "danger-btn", onClick: logoutMi }, "退出登录"),
                 ]),
               ])
-            : h("div", null, [h("span", { class: "dot dot-idle" }), "未登录小米账号"]),
+            : mi.value?.sessionExpired
+              ? h("div", null, [
+                  h("span", { class: "dot dot-error" }),
+                  `登录已失效${mi.value.accountMasked ? `（${mi.value.accountMasked}）` : ""}，请重新登录`,
+                ])
+              : h("div", null, [h("span", { class: "dot dot-idle" }), "未登录小米账号"]),
         ]),
 
         // 单账号模型：新登录会顶掉当前账号，展开时先把替换语义说清。

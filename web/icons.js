@@ -44,6 +44,12 @@ export const Icons = {
     h("circle", { cx: 6.8, cy: 17.5, r: 2.3 }),
     h("circle", { cx: 16.8, cy: 15.8, r: 2.3 }),
   ]),
+  // 曲库：文件夹 + 音符（NAS/本地音乐）
+  library: () => icon([
+    h("path", { d: "M3.5 7.5V6a1.5 1.5 0 0 1 1.5-1.5h4l2 2h7.5A1.5 1.5 0 0 1 20 8v10a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18z" }),
+    h("path", { d: "M13.8 15.6v-4.8l3 .8" }),
+    h("circle", { cx: 12.4, cy: 15.8, r: 1.5 }),
+  ]),
   settings: () => icon([
     h("path", { d: "M4 7h9M17 7h3M4 17h3M11 17h9" }),
     h("circle", { cx: 15, cy: 7, r: 2 }),

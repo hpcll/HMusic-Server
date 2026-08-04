@@ -32,7 +32,8 @@ export async function api(path, options = {}) {
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   let body = options.body;
-  if (body !== undefined && typeof body !== "string") {
+  // FormData（如曲库上传）原样透传：不设 Content-Type，浏览器自带 multipart boundary。
+  if (body !== undefined && typeof body !== "string" && !(body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(body);
   }

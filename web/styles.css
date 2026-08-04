@@ -30,6 +30,16 @@
   --radius-sm: 7px;
   --font-serif: "Songti SC", "Noto Serif SC", Georgia, "Times New Roman", serif;
   --sidebar-w: 232px;
+  /* 字号/间距 scale：新增样式一律从档位取值，存量数值随后续触碰逐步迁移，
+     不做一次性全站替换（视觉回归无法自动验证）。 */
+  --fs-xs: 11px;   /* 角标、图例 */
+  --fs-sm: 12.5px; /* 辅助文字、行副标题 */
+  --fs-md: 13.5px; /* 正文次级、按钮 */
+  --fs-lg: 17px;   /* 区块标题 */
+  --fs-xl: 21px;   /* 页内子标题 */
+  --fs-2xl: 28px;  /* 页标题 */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 22px; --sp-6: 32px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -478,8 +488,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 8px;
-  padding: 48px 16px;
+  gap: var(--sp-2);
+  padding: 48px var(--sp-4);
   text-align: center;
 }
 .state-icon {
@@ -490,16 +500,16 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   color: var(--muted);
   display: grid;
   place-items: center;
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-1);
 }
 .state-icon svg { width: 28px; height: 28px; opacity: 0.7; }
 .state-title {
   font-family: var(--font-serif);
-  font-size: 16px;
+  font-size: var(--fs-lg);
   font-weight: 600;
   color: var(--muted-2);
 }
-.state-hint { font-size: 13px; color: var(--muted); }
+.state-hint { font-size: var(--fs-md); color: var(--muted); }
 .state-action { margin-top: 6px; }
 .spinner {
   width: 28px;
@@ -526,7 +536,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   display: grid;
   justify-items: center;
   gap: 10px;
-  padding-bottom: 4px;
+  padding-bottom: var(--sp-1);
 }
 .login-mark { width: 56px; height: 56px; object-fit: contain; }
 .login-name {
@@ -536,12 +546,19 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   letter-spacing: -0.01em;
   color: var(--text-strong);
 }
-.login-sub { color: var(--muted); text-align: center; margin: 0 0 10px; font-size: 13.5px; }
-.login-panel .primary-btn { width: 100%; padding: 11px 18px; margin-top: 4px; }
+.login-sub { color: var(--muted); text-align: center; margin: 0 0 10px; font-size: var(--fs-md); }
+.login-panel .field { font-size: var(--fs-sm); }
+.login-panel input { padding: var(--sp-2) var(--sp-3); font-size: var(--fs-md); }
+.login-panel .primary-btn {
+  width: 100%;
+  padding: var(--sp-3) 18px;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-md);
+}
 .login-foot {
   color: var(--muted);
   text-align: center;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   margin: 18px 0 0;
   letter-spacing: 0.04em;
 }
@@ -1190,6 +1207,30 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   color: var(--text-strong);
 }
 .section-body { display: grid; gap: 16px; }
+
+/* 提示条：警示色左线 + 面板底，承载「状态异常 + 去处理」的轻量通知 */
+.notice-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  background: var(--panel);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.notice-bar .ghost-btn { white-space: nowrap; flex: none; }
+.notice-bar.error { border-left-color: var(--danger); }
+
+/* ============ 曲库页 ============ */
+/* 上传键是 <label> 包隐藏 file input：视觉复用 secondary-btn，仅补指针语义 */
+.upload-btn { cursor: pointer; }
+.load-more { display: grid; justify-content: center; padding: var(--sp-2) 0; }
+.group-row { cursor: pointer; }
+.group-row .pl-icon { flex: none; }
 
 /* Tabs（登录三通道） */
 .tabs {

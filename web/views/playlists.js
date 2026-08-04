@@ -231,7 +231,8 @@ export const PlaylistsView = {
         ]),
         createOpen.value ? renderCreateModal() : null,
         importOpen.value ? renderImportModal() : null,
-        // 「已下载」系统视图入口卡（缓存层，非歌单——不可删、不占命名空间）
+        // 「已下载」「曲库」系统视图入口卡（非歌单——不可删、不占命名空间）。
+        // 曲库卡兼作移动端唯一入口：底栏 6 tab 已满，对齐「已下载」的系统卡模式。
         h("div", { class: "playlist-grid" }, [
           h("div", {
             class: "playlist-card card",
@@ -247,6 +248,16 @@ export const PlaylistsView = {
                 class: "icon-btn", title: "播放全部",
                 onClick: (e) => { e.stopPropagation(); playDownloads(); },
               }, Icons.play()),
+            ]),
+          ]),
+          h("div", {
+            class: "playlist-card card",
+            onClick: () => go("library"),
+          }, [
+            h("div", { class: "pl-icon" }, Icons.library()),
+            h("div", { class: "pl-meta" }, [
+              h("div", { class: "pl-name" }, "曲库"),
+              h("div", { class: "muted" }, "NAS 与本地音乐"),
             ]),
           ]),
         ]),
