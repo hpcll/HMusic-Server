@@ -313,6 +313,50 @@ export const PlayerView = {
       narrowMq.removeEventListener("change", onNarrowChange);
     });
 
+    function queueBtn() {
+      return h("button", {
+        class: "ctrl-btn",
+        title: "播放队列",
+        onClick: () => go("queue"),
+      }, Icons.queue());
+    }
+
+    function volumeEl() {
+      return h("div", {
+        class: ["volume-wrap", { open: volumeOpen.value }],
+        // hover 展开仅限有悬停能力的设备——触屏上 mouseenter 会和 click
+        // 打架（一点即开又即关，表现为"无法调节"），触屏只走点击开关。
+        onMouseenter: hoverable ? () => (volumeOpen.value = true) : undefined,
+        onMouseleave: hoverable
+          ? () => {
+              if (!volDragging.value) volumeOpen.value = false;
+            }
+          : undefined,
+      }, [
+        h("button", {
+          class: "ctrl-btn",
+          title: "音量",
+          onClick: () => (volumeOpen.value = !volumeOpen.value),
+        }, volumeIcon(volume.value)),
+        h("div", { class: "volume-flyout" }, [
+          h("input", {
+            type: "range",
+            class: "volume-slider",
+            min: 0,
+            max: 100,
+            value: volume.value,
+            "aria-label": "音量",
+            onInput: (e) => {
+              volDragging.value = true;
+              volume.value = Number(e.target.value);
+            },
+            onChange: commitVolume,
+          }),
+          h("span", { class: "volume-pct" }, String(volume.value)),
+        ]),
+      ]);
+    }
+
     function renderStage() {
       return h("section", { class: "np-stage" }, [
         h("div", {
@@ -342,9 +386,8 @@ export const PlayerView = {
         // 窄屏：染色歌词条放在信息与进度之间（QQ 音乐同构布局）
         isNarrow.value ? renderLyricStrip() : null,
 
-        // 进度条（本机播放时长以 <audio> 为准兜底）+ 行末音量键。
-        // 音量是「输出强度」，语义上与进度同层（Spotify 桌面版同款位置），
-        // 把主控第五键让给队列——窄屏队列页的唯一入口。
+        // 进度条全端独享整行，避免 360px 左栏与窄屏被工具键挤压。
+        // 本机播放时长仍以 <audio> 为准兜底。
         h("div", { class: "progress-row" }, [
           h("span", { class: "progress-time" }, formatTime(displayPos.value)),
           h("input", {
@@ -365,50 +408,11 @@ export const PlayerView = {
             },
           }),
           h("span", { class: "progress-time" }, formatTime(totalMs())),
-          h("button", {
-            class: "icon-btn",
-            title: "播放队列",
-            onClick: () => go("queue"),
-          }, Icons.queue()),
-          h("div", {
-            class: ["volume-wrap", { open: volumeOpen.value }],
-            // hover 展开仅限有悬停能力的设备——触屏上 mouseenter 会和 click
-            // 打架（一点即开又即关，表现为"无法调节"），触屏只走点击开关。
-            onMouseenter: hoverable ? () => (volumeOpen.value = true) : undefined,
-            onMouseleave: hoverable
-              ? () => {
-                  if (!volDragging.value) volumeOpen.value = false;
-                }
-              : undefined,
-          }, [
-            h("button", {
-              class: "icon-btn",
-              title: "音量",
-              onClick: () => (volumeOpen.value = !volumeOpen.value),
-            }, volumeIcon(volume.value)),
-            h("div", { class: "volume-flyout" }, [
-              h("input", {
-                type: "range",
-                class: "volume-slider",
-                min: 0,
-                max: 100,
-                value: volume.value,
-                "aria-label": "音量",
-                onInput: (e) => {
-                  volDragging.value = true;
-                  volume.value = Number(e.target.value);
-                },
-                onChange: commitVolume,
-              }),
-              h("span", { class: "volume-pct" }, String(volume.value)),
-            ]),
-          ]),
         ]),
 
-        // 单行主控：收藏 / 上一曲 / 播放暂停 / 下一曲 / 模式 —— 五键对称，
-        // 播放键正中，收藏与模式作两端配重；队列/音量在进度行末
-        // （Spotify 桌面右下同款组合）。
+        // 主控全端统一七键单行：队列/收藏 - 上一曲/播放/下一曲 - 模式/音量。
         h("div", { class: "controls" }, [
+          queueBtn(),
           h("button", {
             class: ["ctrl-btn", "ctrl-fav", { active: !!favItem.value }],
             title: favItem.value ? "从「我喜欢的音乐」移除" : "加入「我喜欢的音乐」",
@@ -427,6 +431,7 @@ export const PlayerView = {
             }（点击切换）`,
             onClick: cycleMode,
           }, (MODE_ICONS[pb.value.playMode] || Icons.repeat)()),
+          volumeEl(),
         ]),
       ]);
     }
@@ -466,7 +471,7 @@ export const PlayerView = {
       ]);
     }
 
-    // 窄屏：当前句染色歌词条（点击进独立歌词页）。
+    // 窄屏：当前句染色歌词条（点击进独立歌词页），未开播时预览首句。
     // 染色 = 行内进度驱动的左→右渐进填充；歌词本体就是入口，不加多余装饰。
     function renderLyricStrip() {
       if (!track.value) return null;
@@ -477,7 +482,7 @@ export const PlayerView = {
         : hasLine
           ? lines[activeLine.value]?.text || "…"
           : lines.length > 0
-            ? "…"
+            ? lines[0]?.text || "…"
             : lyric.value?.lrc
               ? "查看歌词"
               : "暂无歌词";

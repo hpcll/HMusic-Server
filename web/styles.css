@@ -694,12 +694,13 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .ctrl-fav.active { color: var(--fav); border-color: color-mix(in srgb, var(--fav) 45%, var(--line)); }
 .ctrl-fav.active:hover { border-color: var(--fav); }
 @media (max-width: 1023px) {
-  /* 窄屏播放页单屏化：不再内联歌词栏（收成歌词条，np-lyrics 只剩歌词页在用
-     且被 .lyrics-page 覆写），封面限高保证
-     封面+信息+进度+主控+歌词条一屏放下，底部导航不被顶出视野。 */
-  .player-view { min-height: auto; align-content: start; }
-  .np-cover { max-width: min(100%, 44vh); }
-  .np-grid { gap: 18px; }
+  /* 窄屏播放页单屏化：内容整体在内容区高度内垂直居中，剩余空间对称分布。
+     40px 桌面呼吸区（对齐右栏歌词收口用）在无歌词栏的窄屏收回。 */
+  .player-view { min-height: 100%; align-content: center; }
+  .np-cover { max-width: min(100%, 42vh); }
+  .np-grid { gap: 16px; }
+  .np-stage { gap: 14px; }
+  .progress-row { margin-top: 4px; }
 }
 
 /* 窄屏：染色歌词条（信息与进度条之间，点击进歌词页）。
@@ -801,10 +802,10 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 .progress-bar:disabled { opacity: 0.4; cursor: default; }
 
-/* 单行主控：四键等距横排，音量滑块 hover 向右展开 */
+/* 全端七键单行；紧凑规格限定在播放页主控，不影响歌词页的基础按钮尺寸 */
 .controls {
   display: flex; align-items: center; justify-content: center;
-  gap: 22px; padding: 2px 0;
+  gap: 8px; padding: 2px 0;
 }
 .ctrl-btn {
   width: 46px; height: 46px; border-radius: 50%;
@@ -826,8 +827,12 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .ctrl-btn.primary:active { transform: scale(0.95); }
 .ctrl-btn:disabled { opacity: 0.5; }
 .ctrl-btn.busy { opacity: 0.6; }
+.controls .ctrl-btn { width: 40px; height: 40px; }
+.controls .ctrl-btn svg { width: 18px; height: 18px; }
+.controls .ctrl-btn.primary { width: 56px; height: 56px; }
+.controls .ctrl-btn.primary svg { width: 25px; height: 25px; }
 
-/* 音量：进度行末端的小圆键，竖向滑杆面板从按钮正上方弹出（滑块旋转 -90°，
+/* 音量：主控行圆键的竖向滑杆面板从按钮正上方弹出（滑块旋转 -90°，
    上拖加大）。桌面 hover 展开、触屏点击开关，全端同一套面板。 */
 .volume-wrap { position: relative; display: flex; align-items: center; flex: none; }
 .volume-flyout {
@@ -873,8 +878,11 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 1023px) {
-  .controls { gap: 14px; } /* 五键收紧间距，360px 级机型不溢出 */
+@media (max-width: 374px) {
+  /* 360px 级机型：6×36+52+6×6=304 ≤ 328 可用宽。 */
+  .controls { gap: 6px; }
+  .controls .ctrl-btn { width: 36px; height: 36px; }
+  .controls .ctrl-btn.primary { width: 52px; height: 52px; }
 }
 
 .device-list { display: grid; gap: 8px; }
