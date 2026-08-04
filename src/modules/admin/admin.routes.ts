@@ -491,8 +491,19 @@ function renderAdminHtml(): string {
         transition: width 0.3s ease;
       }
 
+      /* 卡片高度差异很大（603px 的 LX 插件 vs 174px 的链路诊断），
+         静态左右分列必然一边先见底。改用 multi-column 让浏览器按实际
+         高度自动填充，加新卡片也不需要重新规划归属。 */
+      .dashboard-grid {
+        display: block;
+        columns: 2;
+        column-gap: 20px;
+      }
+
       .dashboard-grid .section {
         scroll-margin-top: 84px;
+        /* 卡片不允许被拆到两列 */
+        break-inside: avoid;
       }
 
       .stat-grid {
@@ -904,6 +915,12 @@ function renderAdminHtml(): string {
           grid-template-columns: 1fr;
         }
 
+        /* dashboard-grid 是 multi-column，grid-template-columns 对它无效，
+           必须显式收成单列，否则窄屏会被挤成两条窄柱。 */
+        .dashboard-grid {
+          columns: 1;
+        }
+
         .split {
           grid-template-columns: 1fr;
         }
@@ -1114,7 +1131,6 @@ function renderAdminHtml(): string {
         </section>
 
         <div class="grid dashboard-grid">
-          <div class="dashboard-main">
           <section class="section" id="devicesSection">
             <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>播放设备</h2>
             <p class="sec-sub">登录小米账号后刷新设备，选择默认播放设备。</p>
@@ -1297,9 +1313,6 @@ function renderAdminHtml(): string {
             </div>
           </section>
 
-        </div>
-
-        <aside class="dashboard-side">
           <section class="section" id="statsSection">
             <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>听歌统计</h2>
             <p class="sec-sub">来自播放历史的聚合数据，近 30 天。</p>
@@ -1340,7 +1353,6 @@ function renderAdminHtml(): string {
             <div class="status" id="runtimeStatus"></div>
           </section>
 
-        </aside>
         </div>
       </div>
     </main>
