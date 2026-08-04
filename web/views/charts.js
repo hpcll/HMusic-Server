@@ -1,8 +1,8 @@
-import { ref, onMounted, h } from "vue";
+import { ref, computed, watch, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
-import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
+import { router, go, refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 import {
   openDownloadPicker,
   refreshDownloadedKeys,
@@ -23,12 +23,16 @@ export const ChartsView = {
   setup() {
     const charts = ref([]); // 榜单目录（摘要）
     const previews = ref({}); // 榜单 id → 前 3 首（null=拉取失败，回退显示描述）
-    const active = ref(null); // 当前打开的榜单摘要；null = 卡片墙
     const chart = ref(null); // 当前榜单详情
     const loading = ref(true);
     const loadError = ref("");
     const detailLoading = ref(false);
+    const detailError = ref("");
     const actingRank = ref(0);
+    // 目录已返回时优先用摘要；刷新直达时由详情补齐页头名称与描述。
+    const active = computed(() =>
+      charts.value.find((item) => item.id === router.params.id) || chart.value,
+    );
 
     async function loadCharts() {
       loading.value = true;
@@ -58,23 +62,28 @@ export const ChartsView = {
       }
     }
 
-    async function openChart(summary) {
-      active.value = summary;
+    async function loadChart(id) {
       chart.value = null;
       detailLoading.value = true;
+      detailError.value = "";
       try {
-        chart.value = await api(`/charts/${summary.id}`);
+        const result = await api(`/charts/${id}`);
+        if (router.name === "charts" && router.params.id === id) {
+          chart.value = result;
+        }
       } catch (error) {
-        toast(error.message, "error");
-        active.value = null; // 拉取失败回卡片墙
+        if (router.name === "charts" && router.params.id === id) {
+          detailError.value = error.message || "加载失败";
+        }
       } finally {
-        detailLoading.value = false;
+        if (router.name === "charts" && router.params.id === id) {
+          detailLoading.value = false;
+        }
       }
     }
 
     function backToWall() {
-      active.value = null;
-      chart.value = null;
+      go("charts");
     }
 
     // 榜单条目 → 可播曲目：带快照直接用，否则搜「歌名 歌手」取第一条。
@@ -149,7 +158,22 @@ export const ChartsView = {
 
     onMounted(loadCharts);
 
-    return () => active.value ? renderDetail() : renderWall();
+    watch(
+      () => [router.name, router.params.id],
+      ([name, id]) => {
+        if (name !== "charts") return;
+        if (id) {
+          loadChart(id);
+        } else {
+          chart.value = null;
+          detailLoading.value = false;
+          detailError.value = "";
+        }
+      },
+      { immediate: true },
+    );
+
+    return () => router.params.id ? renderDetail() : renderWall();
 
     // ── 卡片墙：按来源分组的榜单入口，卡片直接亮前 3 首 ──
     function renderWall() {
@@ -171,7 +195,7 @@ export const ChartsView = {
                         h("div", {
                           key: c.id,
                           class: "card chart-card",
-                          onClick: () => openChart(c),
+                          onClick: () => go("charts", { id: c.id }),
                         }, [
                           h("div", { class: "chart-card-head" }, [
                             renderCardCover(c),
@@ -227,6 +251,7 @@ export const ChartsView = {
 
     // ── 详情：返回 + 榜单曲目列表（沿用榜单行样式） ──
     function renderDetail() {
+      const current = active.value;
       return h("main", { class: "view charts-view" }, [
         h("div", { class: "detail-head" }, [
           h("button", { class: "secondary-btn", onClick: backToWall }, "‹ 返回"),
@@ -238,21 +263,26 @@ export const ChartsView = {
               }, "播放全部")
             : null,
         ]),
-        h("h2", { class: "view-title" }, active.value.name),
-        active.value.description
-          ? h("p", { class: "muted chart-desc" }, active.value.description)
+        h("h2", { class: "view-title" }, current?.name || "榜单详情"),
+        current?.description
+          ? h("p", { class: "muted chart-desc" }, current.description)
           : null,
-        detailLoading.value
-          ? LoadingState({ label: "榜单加载中…" })
-          : !chart.value || chart.value.entries.length === 0
-            ? EmptyState({
-                icon: Icons.charts,
-                title: active.value.id === "family"
-                  ? "还没有播放记录，放几首歌就有家庭热播榜了"
-                  : "榜单是空的",
-              })
-            : h("ol", { class: "track-list chart-list track-cols" },
-                chart.value.entries.map(renderEntry)),
+        detailError.value
+          ? ErrorState({
+              message: detailError.value,
+              onRetry: () => loadChart(router.params.id),
+            })
+          : detailLoading.value
+            ? LoadingState({ label: "榜单加载中…" })
+            : !chart.value || chart.value.entries.length === 0
+              ? EmptyState({
+                  icon: Icons.charts,
+                  title: router.params.id === "family"
+                    ? "还没有播放记录，放几首歌就有家庭热播榜了"
+                    : "榜单是空的",
+                })
+              : h("ol", { class: "track-list chart-list track-cols" },
+                  chart.value.entries.map(renderEntry)),
       ]);
     }
 

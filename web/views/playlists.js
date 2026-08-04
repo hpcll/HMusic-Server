@@ -1,10 +1,10 @@
-import { ref, onMounted, h } from "vue";
+import { ref, watch, onMounted, h } from "vue";
 import { api } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { Modal } from "/app/components/modal.js";
 import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
 import { openConfirm } from "/app/components/confirm.js";
-import { refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
+import { router, go, refreshPlayback, toast, primeLocalAudio } from "/app/main.js";
 import {
   openDownloadPicker,
   refreshDownloadedKeys,
@@ -16,8 +16,9 @@ import {
 export const PlaylistsView = {
   setup() {
     const playlists = ref([]);
-    const detail = ref(null); // 非空时显示详情
-    const downloadsOpen = ref(false); // 「已下载」系统视图（缓存层，不是歌单）
+    const detail = ref(null); // 当前路由对应的歌单详情数据
+    const detailLoading = ref(false);
+    const detailError = ref("");
     const newName = ref("");
     const busy = ref(false);
     const createOpen = ref(false); // 「创建歌单」弹窗
@@ -40,19 +41,29 @@ export const PlaylistsView = {
       }
     }
 
-    async function openDetail(id) {
+    async function loadDetail(id) {
+      detail.value = null;
+      detailLoading.value = true;
+      detailError.value = "";
       try {
         // 单歌单接口的返回都包在 { playlist } 里。
         const result = await api(`/playlists/${id}`);
-        detail.value = result.playlist;
+        if (router.name === "playlists" && router.params.id === id) {
+          detail.value = result.playlist;
+        }
       } catch (error) {
-        toast(error.message, "error");
+        if (router.name === "playlists" && router.params.id === id) {
+          detailError.value = error.message || "加载失败";
+        }
+      } finally {
+        if (router.name === "playlists" && router.params.id === id) {
+          detailLoading.value = false;
+        }
       }
     }
 
     function backToList() {
-      detail.value = null;
-      loadList();
+      go("playlists");
     }
 
     async function createPlaylist() {
@@ -177,16 +188,32 @@ export const PlaylistsView = {
       }
     }
 
-    onMounted(() => {
-      loadList();
-      refreshDownloadedKeys();
-    });
+    // 列表加载交给下方 immediate watch（无 id 分支），这里只补下载角标。
+    onMounted(refreshDownloadedKeys);
+
+    watch(
+      () => [router.name, router.params.id],
+      ([name, id]) => {
+        if (name !== "playlists") return;
+        if (id) {
+          loadDetail(id);
+        } else {
+          detail.value = null;
+          detailLoading.value = false;
+          detailError.value = "";
+          // 回到列表态就刷新列表——浏览器返回键与页内返回按钮同等对待，
+          // 详情里的增删不会在返回后留下过时的「N 首」计数。
+          loadList();
+        }
+      },
+      { immediate: true },
+    );
 
     return () =>
-      downloadsOpen.value
-        ? renderDownloads()
-        : detail.value
-          ? renderDetail()
+      router.params.id
+        ? renderDetail()
+        : router.params.view === "downloads"
+          ? renderDownloads()
           : renderList();
 
     function renderList() {
@@ -208,7 +235,7 @@ export const PlaylistsView = {
         h("div", { class: "playlist-grid" }, [
           h("div", {
             class: "playlist-card card",
-            onClick: () => { downloadsOpen.value = true; },
+            onClick: () => go("playlists", { view: "downloads" }),
           }, [
             h("div", { class: "pl-icon" }, Icons.download()),
             h("div", { class: "pl-meta" }, [
@@ -235,7 +262,8 @@ export const PlaylistsView = {
                 })
               : h("div", { class: "playlist-grid" },
               playlists.value.map((p) =>
-                h("div", { key: p.id, class: "playlist-card card", onClick: () => openDetail(p.id) }, [
+                h("div", { key: p.id, class: "playlist-card card",
+                  onClick: () => go("playlists", { id: p.id }) }, [
                   h("div", { class: "pl-icon" }, Icons.playlists()),
                   h("div", { class: "pl-meta" }, [
                     h("div", { class: "pl-name" }, p.name),
@@ -298,39 +326,55 @@ export const PlaylistsView = {
 
     function renderDetail() {
       const d = detail.value;
-      const items = d.items || [];
+      const items = d?.items || [];
       return h("main", { class: "view playlist-detail" }, [
         h("div", { class: "detail-head" }, [
           h("button", { class: "secondary-btn", onClick: backToList }, "‹ 返回"),
-          h("button", { class: "secondary-btn", disabled: !items.length,
-            onClick: () => playPlaylist(d.id) }, "播放全部"),
+          d
+            ? h("button", { class: "secondary-btn", disabled: !items.length,
+                onClick: () => playPlaylist(d.id) }, "播放全部")
+            : null,
         ]),
-        h("h2", { class: "view-title" }, d.name),
-        d.description ? h("p", { class: "muted" }, d.description) : null,
-        items.length === 0
-          ? EmptyState({
-              icon: Icons.note,
-              title: "歌单是空的",
-              hint: "在搜索里把歌加进歌单",
+        detailError.value
+          ? ErrorState({
+              message: detailError.value,
+              onRetry: () => loadDetail(router.params.id),
             })
-          : h("ul", { class: "track-list track-cols" },
-              items.map((it, i) =>
-                h("li", { key: it.id, class: "track-row" }, [
-                  h("div", { class: "queue-index" }, String(i + 1)),
-                  h("div", { class: "track-info", style: { cursor: "pointer" },
-                    onClick: () => playPlaylist(d.id, i) }, [
-                    h("div", { class: "track-title" }, [it.track.title, downloadedBadge(it.track)]),
-                    h("div", { class: "track-artist" }, it.track.artist || "未知"),
-                  ]),
-                  h("div", { class: "track-actions" }, [
-                    h("button", { class: "icon-btn", title: "下载到服务器",
-                      onClick: () => openDownloadPicker(it.track) }, Icons.download()),
-                    h("button", { class: "icon-btn", title: "从歌单移除",
-                      onClick: () => removeTrack(it.id) }, Icons.close()),
-                  ]),
-                ]),
-              ),
-            ),
+          : detailLoading.value
+            ? LoadingState({ label: "歌单加载中…" })
+            : d
+              ? [
+                  h("h2", { class: "view-title" }, d.name),
+                  d.description ? h("p", { class: "muted" }, d.description) : null,
+                  items.length === 0
+                    ? EmptyState({
+                        icon: Icons.note,
+                        title: "歌单是空的",
+                        hint: "在搜索里把歌加进歌单",
+                      })
+                    : h("ul", { class: "track-list track-cols" },
+                        items.map((it, i) =>
+                          h("li", { key: it.id, class: "track-row" }, [
+                            h("div", { class: "queue-index" }, String(i + 1)),
+                            h("div", { class: "track-info", style: { cursor: "pointer" },
+                              onClick: () => playPlaylist(d.id, i) }, [
+                              h("div", { class: "track-title" }, [
+                                it.track.title,
+                                downloadedBadge(it.track),
+                              ]),
+                              h("div", { class: "track-artist" }, it.track.artist || "未知"),
+                            ]),
+                            h("div", { class: "track-actions" }, [
+                              h("button", { class: "icon-btn", title: "下载到服务器",
+                                onClick: () => openDownloadPicker(it.track) }, Icons.download()),
+                              h("button", { class: "icon-btn", title: "从歌单移除",
+                                onClick: () => removeTrack(it.id) }, Icons.close()),
+                            ]),
+                          ]),
+                        ),
+                      ),
+                ]
+              : null,
       ]);
     }
 
@@ -339,8 +383,7 @@ export const PlaylistsView = {
       const items = downloadedList.value;
       return h("main", { class: "view playlist-detail" }, [
         h("div", { class: "detail-head" }, [
-          h("button", { class: "secondary-btn",
-            onClick: () => { downloadsOpen.value = false; } }, "‹ 返回"),
+          h("button", { class: "secondary-btn", onClick: backToList }, "‹ 返回"),
           h("button", { class: "secondary-btn", disabled: !items.length,
             onClick: () => playDownloads() }, "播放全部"),
         ]),

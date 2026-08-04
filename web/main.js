@@ -272,25 +272,38 @@ const routes = {
   login: { component: LoginView, requiresAuth: false },
 };
 
-export const router = reactive({ name: "player" });
+export const router = reactive({ name: "player", params: {} });
 
-export function go(name) {
-  if (location.hash !== `#/${name}`) location.hash = `#/${name}`;
+export function go(name, params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const hash = query ? `#/${name}?${query}` : `#/${name}`;
+  if (location.hash !== hash) location.hash = hash;
   else applyRoute();
 }
 
 function applyRoute() {
-  const name = (location.hash.replace(/^#\//, "") || "player").split("?")[0];
+  const path = location.hash.replace(/^#\//, "") || "player";
+  const queryAt = path.indexOf("?");
+  const name = queryAt >= 0 ? path.slice(0, queryAt) : path;
+  const params = Object.fromEntries(
+    new URLSearchParams(queryAt >= 0 ? path.slice(queryAt + 1) : ""),
+  );
   const route = routes[name] || routes.player;
   if (route.requiresAuth && !store.authenticated) {
     router.name = "login";
-    return;
-  }
-  if (name === "login" && store.authenticated) {
+    router.params = {};
+  } else if (name === "login" && store.authenticated) {
     router.name = "player";
-    return;
+    router.params = {};
+  } else {
+    router.name = routes[name] ? name : "player";
+    router.params = params;
   }
-  router.name = routes[name] ? name : "player";
+
+  // 路由切换回到顶部，行为对齐传统多页导航。
+  window.scrollTo(0, 0);
+  const content = document.querySelector(".content");
+  if (content) content.scrollTop = 0;
 }
 
 window.addEventListener("hashchange", applyRoute);
@@ -301,7 +314,7 @@ window.addEventListener("hashchange", applyRoute);
 const SIDEBAR_ITEMS = ["player", "search", "queue", "playlists", "charts", "stats", "settings"];
 // 移动底栏 6 tab：「播放」放首位，其图标即迷你播放指示器（封面 + 进度环 +
 // 状态徽章）——对齐 Flutter app _PlayTabIcon 的方案：mini player 不做横条，
-// 入口就是 tab 本身。队列窄屏暂无入口（桌面侧栏可达）。
+// 入口就是 tab 本身。队列窄屏入口在播放页进度行末的队列键。
 const MOBILE_NAV_ITEMS = ["player", "charts", "search", "playlists", "stats", "settings"];
 
 const App = {
