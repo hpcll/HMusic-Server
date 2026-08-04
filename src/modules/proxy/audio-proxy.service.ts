@@ -27,7 +27,11 @@ export function createLocalAudioUrl(downloadId: string): string {
 }
 
 export function verifyLocalAudioToken(token: string): string {
-  const [id, signature] = token.split(".");
+  // 按最后一个「.」切分：曲库 token 是 trackKey（source:sourceTrackId），
+  // sourceTrackId 可能含「.」，split(".") 会把 id 截断。
+  const dot = token.lastIndexOf(".");
+  const id = dot > 0 ? token.slice(0, dot) : "";
+  const signature = dot > 0 ? token.slice(dot + 1) : "";
   if (!id || !signature || !isValidSignature(id, signature)) {
     throw new AppError("AUDIO_PROXY_TOKEN_INVALID", "本地音频链接无效", 403);
   }

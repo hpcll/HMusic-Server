@@ -9,6 +9,7 @@ import {
   verifyLocalAudioToken,
 } from "./audio-proxy.service.js";
 import { getDownloadFile } from "../downloads/downloads.service.js";
+import { getLibraryFile } from "../library/library.service.js";
 
 const tokenParamsSchema = z.object({
   token: z.string().min(1),
@@ -72,11 +73,16 @@ export async function proxyRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(Readable.fromWeb(response.body));
   });
 
-  // 本地已下载音频：直接流本地文件，支持 Range（<audio> 拖进度、音箱断点续拉都靠它）。
+  // 本地音频/封面：直接流本地文件，支持 Range（<audio> 拖进度、音箱断点续拉都靠它）。
+  // token 兼容三种身份：曲库 trackKey / 曲库条目 id / 下载记录 id（历史链接）。
   app.get("/local/:token", async (request, reply) => {
     const { token } = tokenParamsSchema.parse(request.params);
     const id = verifyLocalAudioToken(token);
-    const file = getDownloadFile(id);
+    const file = getLibraryFile(id) ?? getDownloadFile(id);
+    // 签名有效但条目已删（歌单快照指向手删后的本地文件等）：404 而非空引用 500。
+    if (!file) {
+      throw new AppError("LOCAL_FILE_NOT_FOUND", "本地文件不存在或已删除", 404, { id });
+    }
     const stat = await fs.stat(file.absPath);
 
     reply.header("accept-ranges", "bytes");

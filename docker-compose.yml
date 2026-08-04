@@ -1,0 +1,53 @@
+# HMusic Server —— Linux NAS 部署（群晖/威联通/unRAID/飞牛/Debian…）。
+#
+# 关键：network_mode: host。本服务靠 mDNS(_hmusic._tcp) 让 App 秒级发现，
+# 又靠读取真实网卡 IPv4 给小爱音箱下发可访问的音频地址。桥接网络会让 mDNS
+# 多播出不去、网卡只剩容器内网 172.x —— 音箱将连不上。所以必须走宿主机网络。
+#
+# ⚠️ macOS / Windows 的 Docker Desktop 跑在 VM 里，host 模式形同虚设、mDNS 失效，
+#    不要用本文件；请改用原生方式（见 README「其他平台」）。
+#
+# 使用：
+#   1) cp .env.example .env  然后改 HMUSIC_JWT_SECRET（必须）
+#   2) docker compose up -d
+#   3) 访问 http://<NAS局域网IP>:6650/app/
+
+services:
+  hmusic-server:
+    image: ghcr.io/hpcll/hmusic-server:latest
+    container_name: hmusic-server
+    restart: unless-stopped
+
+    # 宿主机网络：mDNS 广播 + 真实局域网 IPv4 探测的前提。
+    # 端口不再做 -p 映射，服务直接监听宿主机 6650（改端口用下方 HMUSIC_PORT）。
+    network_mode: host
+
+    environment:
+      # 必改：一段随机长字符串。默认 change-me 会被服务拒绝启动。
+      HMUSIC_JWT_SECRET: ${HMUSIC_JWT_SECRET:?请在 .env 里设置 HMUSIC_JWT_SECRET}
+      HMUSIC_PORT: ${HMUSIC_PORT:-6650}
+      HMUSIC_LOG_LEVEL: ${HMUSIC_LOG_LEVEL:-info}
+      # 局域网 IPv4 会自动探测，通常留默认即可；仅反代/公网域名时才显式填写。
+      # 换端口时这里的端口要与 HMUSIC_PORT 一致。
+      HMUSIC_PUBLIC_BASE_URL: ${HMUSIC_PUBLIC_BASE_URL:-http://127.0.0.1:6650}
+      # 数据目录固定容器内 /app/data，由下方 volume 持久化到宿主机 ./data。
+      HMUSIC_DATA_DIR: /app/data
+      HMUSIC_DATABASE_URL: /app/data/hmusic.db
+
+    volumes:
+      # 一处挂载搞定全部状态：SQLite 库 + 下载的音乐(music/) + LX 插件(plugins/lx/)。
+      - ./data:/app/data
+
+    # 健康检查打服务自带的 system/info。用 node 而非 curl —— slim 镜像里没有 curl。
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:'+(process.env.HMUSIC_PORT||6650)+'/api/v1/system/info').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

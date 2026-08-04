@@ -10,6 +10,7 @@ import { compatRoutes } from "./modules/compat/compat.routes.js";
 import { configRoutes } from "./modules/config/config.routes.js";
 import { devicesRoutes } from "./modules/devices/devices.routes.js";
 import { downloadsRoutes } from "./modules/downloads/downloads.routes.js";
+import { libraryRoutes } from "./modules/library/library.routes.js";
 import { lyricsRoutes } from "./modules/lyrics/lyrics.routes.js";
 import { miPublicRoutes } from "./modules/mi/mi-public.routes.js";
 import { miRoutes } from "./modules/mi/mi.routes.js";
@@ -34,7 +35,9 @@ export async function buildApp() {
     // 音频代理链接把整条上游 URL base64 塞进路径参数——QQ 的带 vkey 直链
     // base64 后能到 300+ 字符，远超 Fastify 默认 100 上限。不放宽会 414
     // FST_ERR_MAX_PARAM_LENGTH，浏览器 <audio> 直接拿不到流（点了播放没声音）。
-    maxParamLength: 4000,
+    routerOptions: {
+      maxParamLength: 4000,
+    },
   });
 
   await app.register(cors, {
@@ -66,6 +69,7 @@ export async function buildApp() {
   await app.register(chartsRoutes, { prefix: "/api/v1/charts" });
   await app.register(statsRoutes, { prefix: "/api/v1/stats" });
   await app.register(downloadsRoutes, { prefix: "/api/v1/downloads" });
+  await app.register(libraryRoutes, { prefix: "/api/v1/library" });
 
   return app;
 }

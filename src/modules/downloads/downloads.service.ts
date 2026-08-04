@@ -11,6 +11,7 @@ import { env } from "../../config/env.js";
 import type { HMusicTrack } from "../../shared/contracts.js";
 import { AppError } from "../../shared/errors.js";
 import { moduleLogger } from "../../shared/logger.js";
+import { upsertFromDownload } from "../library/library.service.js";
 import { createLocalAudioUrl } from "../proxy/audio-proxy.service.js";
 import { resolveTrack } from "../search/search.service.js";
 
@@ -280,6 +281,13 @@ async function runDownload(
       })
       .where(eq(downloads.id, id))
       .run();
+    // 同步进曲库统一视图（trackKey 保留平台身份，在线点播同曲即命中本地）。
+    upsertFromDownload({
+      track,
+      absPath,
+      fileExt,
+      byteSize: stat.size,
+    });
     log.info({ id, size: stat.size }, "下载完成");
   } catch (error) {
     if (absPath) {

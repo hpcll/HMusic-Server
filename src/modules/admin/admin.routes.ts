@@ -20,18 +20,24 @@ function renderAdminHtml(): string {
     <style>
       :root {
         color-scheme: light;
-        --bg: #f6f8f8;
+        --bg: #f4f6f5;
         --panel: #ffffff;
-        --text: #1f2a2a;
-        --muted: #667575;
-        --line: #d9e1e1;
-        --brand: #12a594;
-        --brand-dark: #0b7f72;
+        --text: #172124;
+        --muted: #667477;
+        --line: #e2e8e6;
+        --brand: #0f9f91;
+        --brand-dark: #08776d;
+        --brand-soft: #e8f6f3;
+        --ink: #192426;
         --danger: #b42318;
         --warn-bg: #fff7e6;
         --warn-text: #7a4b00;
         --ok-bg: #e8f7f4;
         --ok-text: #075e54;
+        --radius: 14px;
+        --radius-sm: 10px;
+        --shadow: 0 1px 2px rgba(23, 33, 36, 0.04), 0 4px 14px rgba(23, 33, 36, 0.05);
+        --shadow-pop: 0 12px 40px rgba(23, 33, 36, 0.14);
       }
 
       * {
@@ -45,11 +51,39 @@ function renderAdminHtml(): string {
         font-family:
           -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        transition:
+          border-color 0.15s ease,
+          background-color 0.15s ease,
+          box-shadow 0.15s ease,
+          color 0.15s ease,
+          opacity 0.15s ease;
+      }
+
+      button {
+        transition:
+          border-color 0.15s ease,
+          background-color 0.15s ease,
+          color 0.15s ease,
+          box-shadow 0.15s ease,
+          transform 0.08s ease,
+          opacity 0.15s ease;
       }
 
       header {
         border-bottom: 1px solid var(--line);
-        background: var(--panel);
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        position: sticky;
+        top: 0;
+        z-index: 10;
       }
 
       .shell {
@@ -61,23 +95,40 @@ function renderAdminHtml(): string {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        min-height: 72px;
+        min-height: 64px;
         gap: 16px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .brand-logo {
+        width: 34px;
+        height: 34px;
+        flex-shrink: 0;
+        border-radius: 8px;
+        background: var(--brand-soft);
+        padding: 4px;
       }
 
       h1 {
         margin: 0;
-        font-size: 24px;
+        font-size: 20px;
         font-weight: 700;
+        letter-spacing: -0.01em;
       }
 
       main {
-        padding: 24px 0 40px;
+        padding: 24px 0 48px;
       }
 
       .grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
         gap: 20px;
         align-items: start;
       }
@@ -85,32 +136,69 @@ function renderAdminHtml(): string {
       .section {
         background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 20px;
+        border-radius: var(--radius);
+        padding: 22px 22px 20px;
+        margin-bottom: 18px;
+        box-shadow: var(--shadow);
       }
 
       .section h2 {
-        margin: 0 0 12px;
-        font-size: 18px;
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .section h2 .sec-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: var(--brand-soft);
+        color: var(--brand-dark);
+        flex-shrink: 0;
+      }
+
+      .section h2 .sec-icon svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.8;
+      }
+
+      .sec-sub {
+        margin: 8px 0 4px;
+        padding-left: 40px;
+        font-size: 12.5px;
+        color: var(--muted);
       }
 
       .subtle {
         color: var(--muted);
-        font-size: 14px;
+        font-size: 13px;
       }
 
       label {
         display: grid;
         gap: 6px;
         margin: 12px 0;
-        font-size: 14px;
-        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
       }
 
       .hint {
         color: var(--muted);
         font-size: 12px;
+        font-weight: 400;
         line-height: 1.4;
       }
 
@@ -118,13 +206,24 @@ function renderAdminHtml(): string {
       select,
       textarea {
         width: 100%;
-        min-height: 44px;
+        min-height: 42px;
         border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 10px 12px;
+        border-radius: var(--radius-sm);
+        padding: 9px 12px;
         color: var(--text);
         font: inherit;
-        background: #fff;
+        font-weight: 400;
+        background: #fbfbfa;
+      }
+
+      input:hover,
+      select:hover,
+      textarea:hover {
+        border-color: #b9c6c3;
+      }
+
+      input::placeholder {
+        color: #9aa7a5;
       }
 
       textarea {
@@ -138,50 +237,79 @@ function renderAdminHtml(): string {
       input:focus,
       select:focus,
       textarea:focus {
-        outline: 2px solid rgba(18, 165, 148, 0.22);
+        outline: none;
         border-color: var(--brand);
+        background: #fff;
+        box-shadow: 0 0 0 3px rgba(15, 159, 145, 0.14);
       }
 
       .split {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
+        gap: 0 14px;
       }
 
       .actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 16px;
+        gap: 8px;
+        margin-top: 14px;
       }
 
       button,
       .button-link {
-        min-height: 42px;
+        min-height: 40px;
         border: 1px solid var(--brand);
-        border-radius: 6px;
-        padding: 9px 14px;
+        border-radius: var(--radius-sm);
+        padding: 8px 14px;
         background: var(--brand);
         color: #fff;
         font: inherit;
-        font-weight: 650;
+        font-size: 14px;
+        font-weight: 600;
         cursor: pointer;
         text-decoration: none;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 1px 2px rgba(8, 119, 109, 0.18);
+      }
+
+      button:hover:not(:disabled),
+      .button-link:hover {
+        background: var(--brand-dark);
+        border-color: var(--brand-dark);
+      }
+
+      button:active:not(:disabled) {
+        transform: translateY(1px);
       }
 
       button.secondary,
       .button-link.secondary {
         background: #fff;
         color: var(--brand-dark);
+        border-color: #cfdad8;
+        box-shadow: none;
+      }
+
+      button.secondary:hover:not(:disabled),
+      .button-link.secondary:hover {
+        background: var(--brand-soft);
+        border-color: var(--brand);
+        color: var(--brand-dark);
       }
 
       button.danger {
-        border-color: var(--danger);
+        border-color: #eec5c2;
         background: #fff;
         color: var(--danger);
+        box-shadow: none;
+      }
+
+      button.danger:hover:not(:disabled) {
+        background: #fff1f0;
+        border-color: var(--danger);
       }
 
       button:disabled {
@@ -193,17 +321,53 @@ function renderAdminHtml(): string {
         display: grid;
         gap: 8px;
         margin-top: 12px;
+        font-size: 13px;
+      }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 7px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+
+      .status-row:last-child {
+        border-bottom: none;
+      }
+
+      .status-row .k {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      .status-row .v {
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 600;
+        text-align: right;
       }
 
       .pill {
         display: inline-flex;
+        align-items: center;
+        gap: 6px;
         width: fit-content;
         border-radius: 999px;
-        padding: 5px 10px;
+        padding: 4px 10px;
         background: var(--ok-bg);
         color: var(--ok-text);
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 650;
+      }
+
+      .pill::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
       }
 
       .pill.warn {
@@ -211,13 +375,97 @@ function renderAdminHtml(): string {
         color: var(--warn-text);
       }
 
+      .progress {
+        height: 6px;
+        border-radius: 999px;
+        background: #edf1f0;
+        margin-top: 10px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--brand), #21b0a5);
+        transition: width 0.3s ease;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .stat-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        background: #fdfdfc;
+      }
+
+      .stat-card .n {
+        display: block;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--text);
+      }
+
+      .stat-card .l {
+        display: block;
+        margin-top: 2px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+
+      .stat-dist {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .dist-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+      }
+
+      .dist-row .bar {
+        grid-column: 1 / -1;
+        height: 4px;
+        border-radius: 999px;
+        background: #edf1f0;
+        overflow: hidden;
+      }
+
+      .dist-row .bar i {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        background: var(--brand);
+      }
+
+      .quick-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .quick-grid button {
+        width: 100%;
+      }
+
       .message {
-        border-radius: 6px;
+        border-radius: var(--radius-sm);
         padding: 10px 12px;
         margin: 12px 0;
         background: var(--ok-bg);
         color: var(--ok-text);
-        font-size: 14px;
+        font-size: 13px;
       }
 
       .message.error {
@@ -232,60 +480,77 @@ function renderAdminHtml(): string {
 
       details.inline-panel {
         border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 12px;
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
         margin-top: 14px;
+        background: #fbfbfa;
       }
 
       details.inline-panel summary {
         cursor: pointer;
         color: var(--brand-dark);
+        font-size: 13px;
         font-weight: 650;
       }
 
       .device-list {
         display: grid;
-        gap: 10px;
+        gap: 8px;
         margin-top: 12px;
       }
 
       .item-list {
         display: grid;
-        gap: 10px;
+        gap: 8px;
         margin-top: 12px;
       }
 
       .device,
       .list-item {
         border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 12px;
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 12px;
         align-items: center;
+        background: #fdfdfc;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
+      }
+
+      .device:hover,
+      .list-item:hover {
+        border-color: #c4d2cf;
+        background: #fff;
       }
 
       .device strong,
       .list-item strong {
         display: block;
-        font-size: 15px;
+        font-size: 14px;
       }
 
       .list-item.full {
         grid-template-columns: 1fr;
       }
 
+      .list-item .actions,
+      .device .actions {
+        margin-top: 0;
+      }
+
       .mini {
-        min-height: 34px;
-        padding: 6px 10px;
-        font-size: 13px;
+        min-height: 32px;
+        padding: 5px 10px;
+        font-size: 12px;
       }
 
       .inline-check {
         display: flex;
         align-items: center;
         gap: 8px;
+        align-self: end;
+        min-height: 42px;
       }
 
       .inline-check input {
@@ -297,6 +562,249 @@ function renderAdminHtml(): string {
         display: none !important;
       }
 
+      body.auth-mode {
+        background:
+          radial-gradient(1100px 500px at 82% -12%, rgba(15, 159, 145, 0.14), transparent 62%),
+          radial-gradient(800px 420px at -10% 110%, rgba(15, 159, 145, 0.09), transparent 60%),
+          var(--bg);
+      }
+
+      body.auth-mode > header {
+        display: none;
+      }
+
+      body.auth-mode main.shell {
+        display: grid;
+        width: 100%;
+        max-width: none;
+        min-height: 100vh;
+        min-height: 100svh;
+        padding: 32px;
+        place-items: center;
+      }
+
+      body.auth-mode #globalMessage {
+        display: none;
+      }
+
+      .auth-layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 0.88fr) minmax(390px, 1.12fr);
+        width: min(920px, 100%);
+        min-height: 560px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--panel);
+        box-shadow: var(--shadow-pop);
+      }
+
+      .auth-context {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        padding: 44px;
+        background: linear-gradient(158deg, #20312f 0%, #142120 58%, #0d1615 100%);
+        color: #f4f8f7;
+      }
+
+      .auth-logo {
+        display: block;
+        width: min(210px, 100%);
+        height: auto;
+      }
+
+      .auth-context-copy {
+        margin: auto 0;
+        padding: 52px 0;
+      }
+
+      .auth-kicker {
+        margin: 0 0 12px;
+        color: #72d4ca;
+        font-size: 12px;
+        font-weight: 750;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .auth-context h1 {
+        max-width: 320px;
+        font-size: 32px;
+        line-height: 1.2;
+      }
+
+      .auth-context-note {
+        max-width: 290px;
+        margin: 14px 0 0;
+        color: #afbcba;
+        font-size: 14px;
+      }
+
+      .auth-service {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 0 10px;
+        align-items: center;
+        padding-top: 18px;
+        border-top: 1px solid rgba(255, 255, 255, 0.13);
+      }
+
+      .auth-service-dot {
+        grid-row: 1 / span 2;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #58cabd;
+        box-shadow: 0 0 0 4px rgba(88, 202, 189, 0.14);
+      }
+
+      .auth-service-name,
+      .auth-service-origin {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .auth-service-name {
+        color: #f4f8f7;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .auth-service-origin {
+        color: #8fa09d;
+        font-size: 12px;
+      }
+
+      .auth-panel {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        padding: 48px 52px;
+      }
+
+      .auth-panel-inner {
+        width: 100%;
+      }
+
+      .auth-panel-kicker {
+        margin: 0 0 10px;
+        color: var(--brand-dark);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .auth-panel h2 {
+        margin: 0;
+        font-size: 24px;
+        letter-spacing: -0.01em;
+        line-height: 1.25;
+      }
+
+      .auth-hint {
+        min-height: 42px;
+        margin: 10px 0 24px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .auth-form {
+        display: grid;
+        gap: 16px;
+      }
+
+      .auth-field {
+        gap: 8px;
+        margin: 0;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .auth-field input {
+        min-height: 46px;
+        padding: 11px 13px;
+      }
+
+      .password-field {
+        display: block;
+        position: relative;
+      }
+
+      .password-field input {
+        padding-right: 48px;
+      }
+
+      .password-toggle {
+        position: absolute;
+        top: 50%;
+        right: 5px;
+        width: 36px;
+        min-height: 36px;
+        padding: 0;
+        transform: translateY(-50%);
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        box-shadow: none;
+      }
+
+      .password-toggle:hover {
+        background: #eef3f2;
+        color: var(--text);
+      }
+
+      .password-toggle svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2;
+      }
+
+      .auth-submit {
+        width: 100%;
+        min-height: 46px;
+        margin-top: 4px;
+      }
+
+      .auth-spinner {
+        display: none;
+        width: 16px;
+        height: 16px;
+        margin-right: 9px;
+        border: 2px solid rgba(255, 255, 255, 0.42);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: auth-spin 0.75s linear infinite;
+      }
+
+      body.is-busy.auth-mode .auth-spinner {
+        display: inline-block;
+      }
+
+      .auth-message {
+        margin: 18px 0 0;
+      }
+
+      .auth-footnote {
+        margin: 24px 0 0;
+        color: #899597;
+        font-size: 12px;
+        text-align: center;
+      }
+
+      @keyframes auth-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       @media (max-width: 860px) {
         .grid {
           grid-template-columns: 1fr;
@@ -306,6 +814,16 @@ function renderAdminHtml(): string {
           grid-template-columns: 1fr;
         }
 
+        .device,
+        .list-item {
+          grid-template-columns: 1fr;
+        }
+
+        .device .actions,
+        .list-item .actions {
+          justify-content: flex-start;
+        }
+
         .topbar {
           align-items: flex-start;
           flex-direction: column;
@@ -313,14 +831,82 @@ function renderAdminHtml(): string {
           padding: 14px 0;
         }
       }
+
+      @media (max-width: 720px) {
+        body.auth-mode main.shell {
+          padding: 16px;
+          place-items: start center;
+        }
+
+        .auth-layout {
+          grid-template-columns: 1fr;
+          min-height: 0;
+        }
+
+        .auth-context {
+          padding: 28px;
+        }
+
+        .auth-logo {
+          width: 160px;
+        }
+
+        .auth-context-copy {
+          padding: 34px 0;
+        }
+
+        .auth-context h1 {
+          font-size: 26px;
+        }
+
+        .auth-panel {
+          padding: 34px 28px 30px;
+        }
+      }
+
+      @media (max-width: 420px) {
+        body.auth-mode main.shell {
+          padding: 0;
+        }
+
+        .auth-layout {
+          min-height: 100vh;
+          min-height: 100svh;
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .auth-context-copy {
+          display: none;
+        }
+
+        .auth-service {
+          margin-top: 28px;
+        }
+
+        .auth-panel {
+          align-items: flex-start;
+          padding: 32px 24px 28px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .auth-spinner {
+          animation: none;
+        }
+      }
     </style>
   </head>
-  <body>
+  <body class="auth-mode">
     <header>
       <div class="shell topbar">
-        <div>
-          <h1>HMusic Server 管理</h1>
-          <div class="subtle" id="serverInfo">正在连接服务端...</div>
+        <div class="brand">
+          <img class="brand-logo" src="/app/assets/hmusic-logo.svg" alt="HMusic" />
+          <div>
+            <h1>HMusic Server 管理</h1>
+            <div class="subtle" id="serverInfo">正在连接服务端...</div>
+          </div>
         </div>
         <button id="logoutButton" class="secondary hidden" type="button">退出登录</button>
       </div>
@@ -329,27 +915,78 @@ function renderAdminHtml(): string {
     <main class="shell">
       <div id="globalMessage" class="message hidden"></div>
 
-      <section id="authSection" class="section">
-        <h2 id="authTitle">管理员登录</h2>
-        <p class="subtle" id="authHint">首次使用需要创建管理员账号，之后使用该账号管理服务端。</p>
-        <label>
-          管理员账号
-          <input id="adminUser" autocomplete="username" value="admin" />
-        </label>
-        <label>
-          管理员密码
-          <input id="adminPass" autocomplete="current-password" type="password" />
-        </label>
-        <div class="actions">
-          <button id="authButton" type="button">登录</button>
+      <section id="authSection" class="auth-layout" aria-labelledby="authTitle">
+        <div class="auth-context">
+          <img class="auth-logo" src="/app/assets/hmusic-logo.svg" alt="HMusic" />
+          <div class="auth-context-copy">
+            <p class="auth-kicker">Server console</p>
+            <h1>HMusic Server</h1>
+            <p class="auth-context-note">管理当前服务节点与播放链路。</p>
+          </div>
+          <div class="auth-service">
+            <span class="auth-service-dot" aria-hidden="true"></span>
+            <span class="auth-service-name" id="authServerInfo">正在连接服务端</span>
+            <span class="auth-service-origin" id="authServerOrigin"></span>
+          </div>
+        </div>
+
+        <div class="auth-panel">
+          <div class="auth-panel-inner">
+            <p class="auth-panel-kicker">管理员入口</p>
+            <h2 id="authTitle">管理员登录</h2>
+            <p class="auth-hint" id="authHint">输入管理员账号密码后继续。</p>
+            <form id="authForm" class="auth-form">
+              <label class="auth-field" for="adminUser">
+                管理员账号
+                <input
+                  id="adminUser"
+                  autocomplete="username"
+                  minlength="3"
+                  required
+                  value="admin"
+                />
+              </label>
+              <label class="auth-field" for="adminPass">
+                管理员密码
+                <span class="password-field">
+                  <input
+                    id="adminPass"
+                    autocomplete="current-password"
+                    minlength="8"
+                    required
+                    type="password"
+                  />
+                  <button
+                    id="passwordToggle"
+                    class="password-toggle"
+                    type="button"
+                    title="显示密码"
+                    aria-label="显示密码"
+                    aria-pressed="false"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.1 12a10.8 10.8 0 0 1 19.8 0 10.8 10.8 0 0 1-19.8 0Z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                </span>
+              </label>
+              <button id="authButton" class="auth-submit" type="submit">
+                <span class="auth-spinner" aria-hidden="true"></span>
+                <span id="authButtonLabel">登录</span>
+              </button>
+            </form>
+            <div id="authMessage" class="message auth-message hidden" role="status" aria-live="polite"></div>
+            <p class="auth-footnote">HMusic Server 管理控制台</p>
+          </div>
         </div>
       </section>
 
       <div id="dashboard" class="grid hidden">
         <div>
           <section class="section">
-            <h2>小米账号</h2>
-            <p class="subtle">账号密码只提交给当前 HMusic Server。服务端保存小米登录凭据，App 不需要保存小米密码。</p>
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/></svg></span>小米账号</h2>
+            <p class="sec-sub">账号密码只提交给当前 HMusic Server。服务端保存小米登录凭据，App 不需要保存小米密码。</p>
             <label>
               小米账号
               <input id="miAccount" autocomplete="username" />
@@ -402,8 +1039,8 @@ function renderAdminHtml(): string {
           </section>
 
           <section class="section">
-            <h2>播放设备</h2>
-            <p class="subtle">登录小米账号后刷新设备，选择默认播放设备。</p>
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>播放设备</h2>
+            <p class="sec-sub">登录小米账号后刷新设备，选择默认播放设备。</p>
             <div class="actions">
               <button id="refreshDevicesButton" type="button">刷新小米设备</button>
               <button id="listDevicesButton" class="secondary" type="button">重新读取列表</button>
@@ -412,7 +1049,7 @@ function renderAdminHtml(): string {
           </section>
 
           <section class="section">
-            <h2>运行配置</h2>
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>运行配置</h2>
             <div class="split">
               <label>
                 服务端名称
@@ -459,7 +1096,7 @@ function renderAdminHtml(): string {
           </section>
 
           <section class="section">
-            <h2>手工曲目</h2>
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>手工曲目</h2>
             <div class="split">
               <label>
                 歌名
@@ -481,7 +1118,7 @@ function renderAdminHtml(): string {
           </section>
 
           <section class="section">
-            <h2>LX 插件</h2>
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></span>LX 插件</h2>
             <div class="split">
               <label>
                 插件 ID
@@ -519,7 +1156,7 @@ function renderAdminHtml(): string {
           </section>
 
           <section class="section">
-            <h2>搜索与播放测试</h2>
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>搜索与播放测试</h2>
             <div class="split">
               <label>
                 关键词
@@ -542,18 +1179,34 @@ function renderAdminHtml(): string {
 
         <aside>
           <section class="section">
-            <h2>服务端状态</h2>
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>服务端状态</h2>
             <div class="status" id="runtimeStatus"></div>
           </section>
 
           <section class="section">
-            <h2>链路诊断</h2>
-            <p class="subtle">先用内置测试音频验证 HMusic Server 到小米音箱的播放链路。</p>
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>链路诊断</h2>
+            <p class="sec-sub">先用内置测试音频验证 HMusic Server 到小米音箱的播放链路。</p>
             <div class="actions">
               <button id="testToneButton" type="button">播放测试音频</button>
               <button id="playbackStateButton" class="secondary" type="button">刷新播放状态</button>
             </div>
             <div class="status" id="playbackStatus"></div>
+          </section>
+
+          <section class="section">
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>听歌统计</h2>
+            <p class="sec-sub">来自播放历史的聚合数据，近 30 天。</p>
+            <div class="status" id="listeningStats"></div>
+          </section>
+
+          <section class="section">
+            <h2><span class="sec-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg></span>快捷操作</h2>
+            <div class="quick-grid">
+              <button id="quickRefreshDevices" class="secondary" type="button">刷新设备</button>
+              <button id="quickRefreshMi" class="secondary" type="button">刷新小米状态</button>
+              <button id="quickReloadConfig" class="secondary" type="button">重载配置</button>
+              <button id="quickRefreshStats" class="secondary" type="button">刷新统计</button>
+            </div>
           </section>
         </aside>
       </div>
@@ -578,20 +1231,30 @@ function renderAdminHtml(): string {
       const el = (id) => document.getElementById(id);
 
       function setBusy(isBusy) {
+        document.body.classList.toggle("is-busy", isBusy);
         document.querySelectorAll("button").forEach((button) => {
           button.disabled = isBusy;
         });
+        el("authButtonLabel").textContent = isBusy
+          ? state.initialized
+            ? "正在登录..."
+            : "正在创建..."
+          : state.initialized
+            ? "登录"
+            : "创建并登录";
       }
 
       function showMessage(text, type) {
-        const target = el("globalMessage");
+        const target = state.user ? el("globalMessage") : el("authMessage");
         target.textContent = text;
         target.className = "message" + (type ? " " + type : "");
+        if (target.id === "authMessage") target.classList.add("auth-message");
         target.classList.remove("hidden");
       }
 
       function clearMessage() {
         el("globalMessage").classList.add("hidden");
+        el("authMessage").classList.add("hidden");
       }
 
       async function api(path, options = {}) {
@@ -615,15 +1278,20 @@ function renderAdminHtml(): string {
 
       function renderAuth() {
         const authenticated = Boolean(state.token && state.user);
+        document.body.classList.toggle("auth-mode", !authenticated);
         el("authSection").classList.toggle("hidden", authenticated);
         el("dashboard").classList.toggle("hidden", !authenticated);
         el("logoutButton").classList.toggle("hidden", !authenticated);
 
         el("authTitle").textContent = state.initialized ? "管理员登录" : "创建管理员账号";
-        el("authButton").textContent = state.initialized ? "登录" : "创建并登录";
+        el("authButtonLabel").textContent = state.initialized ? "登录" : "创建并登录";
         el("authHint").textContent = state.initialized
-          ? "输入管理员账号密码后进入服务端管理。"
-          : "首次使用需要创建管理员账号。密码至少 8 位。";
+          ? "输入管理员账号密码后继续。"
+          : "首次使用需要创建管理员账号，密码至少 8 位。";
+        el("adminPass").autocomplete = state.initialized ? "current-password" : "new-password";
+        document.title = authenticated
+          ? "HMusic Server 管理"
+          : (state.initialized ? "登录" : "初始化") + " · HMusic Server";
       }
 
       function renderRuntime() {
@@ -631,11 +1299,15 @@ function renderAdminHtml(): string {
         el("serverInfo").textContent = info
           ? info.name + " " + info.version + " · " + location.origin
           : location.origin;
+        el("authServerInfo").textContent = info
+          ? info.name + " " + info.version
+          : "HMusic Server";
+        el("authServerOrigin").textContent = location.origin;
         el("runtimeStatus").innerHTML = [
-          "<span class=\\"pill\\">API " + (info?.apiVersion || "v1") + "</span>",
-          "<div>管理员：" + (state.user?.username || "未登录") + "</div>",
-          "<div>小米账号：" + (info?.capabilities?.miAccount ? "支持" : "未启用") + "</div>",
-          "<div>播放控制：" + (info?.capabilities?.playback ? "支持" : "未启用") + "</div>",
+          '<div class="status-row"><span class="k">API 版本</span><span class="pill">' + escapeHtml(info?.apiVersion || "v1") + "</span></div>",
+          '<div class="status-row"><span class="k">管理员</span><span class="v">' + escapeHtml(state.user?.username || "未登录") + "</span></div>",
+          '<div class="status-row"><span class="k">小米账号</span><span class="v">' + (info?.capabilities?.miAccount ? "支持" : "未启用") + "</span></div>",
+          '<div class="status-row"><span class="k">播放控制</span><span class="v">' + (info?.capabilities?.playback ? "支持" : "未启用") + "</span></div>",
         ].join("");
       }
 
@@ -646,13 +1318,20 @@ function renderAdminHtml(): string {
           return;
         }
         const track = playback.track;
-        const rows = [
-          '<span class="pill ' + (playback.state === "playing" ? "" : "warn") + '">' + escapeHtml(playback.state || "unknown") + "</span>",
-          "<div>设备：" + escapeHtml(playback.deviceName || playback.deviceId || "未选择") + "</div>",
-          "<div>曲目：" + escapeHtml(track ? [track.title, track.artist].filter(Boolean).join(" - ") : "无") + "</div>",
-          "<div>进度：" + Math.round((playback.positionMs || 0) / 1000) + "s / " + Math.round((playback.durationMs || 0) / 1000) + "s</div>",
-        ];
-        el("playbackStatus").innerHTML = rows.join("");
+        const pos = Math.round((playback.positionMs || 0) / 1000);
+        const dur = Math.round((playback.durationMs || 0) / 1000);
+        const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0;
+        const statePill =
+          '<span class="pill ' + (playback.state === "playing" ? "" : "warn") + '">' +
+          escapeHtml(playback.state || "unknown") + "</span>";
+        el("playbackStatus").innerHTML =
+          '<div class="status-row"><span class="k">状态</span>' + statePill + "</div>" +
+          '<div class="status-row"><span class="k">设备</span><span class="v">' +
+          escapeHtml(playback.deviceName || playback.deviceId || "未选择") + "</span></div>" +
+          '<div class="status-row"><span class="k">曲目</span><span class="v">' +
+          escapeHtml(track ? [track.title, track.artist].filter(Boolean).join(" - ") : "无") + "</span></div>" +
+          '<div class="status-row"><span class="k">进度</span><span class="v">' + pos + "s / " + dur + "s</span></div>" +
+          '<div class="progress"><div class="progress-bar" style="width:' + pct + '%"></div></div>';
       }
 
       function showMiVerificationStatus(text, type) {
@@ -664,15 +1343,16 @@ function renderAdminHtml(): string {
       }
 
       function renderMiStatus(status) {
-        const rows = [];
         if (!status) {
           el("miStatus").innerHTML = '<span class="pill warn">未读取</span>';
           return;
         }
-        rows.push('<span class="pill ' + (status.loggedIn ? "" : "warn") + '">' + (status.loggedIn ? "已登录" : "未登录") + "</span>");
-        if (status.accountMasked) rows.push("<div>账号：" + status.accountMasked + "</div>");
-        if (status.deviceId) rows.push("<div>登录设备标识：" + status.deviceId + "</div>");
-        if (status.deviceCount !== undefined) rows.push("<div>设备数量：" + status.deviceCount + "</div>");
+        const rows = [
+          '<div class="status-row"><span class="k">登录状态</span><span class="pill ' + (status.loggedIn ? "" : "warn") + '">' + (status.loggedIn ? "已登录" : "未登录") + "</span></div>",
+        ];
+        if (status.accountMasked) rows.push('<div class="status-row"><span class="k">账号</span><span class="v">' + escapeHtml(status.accountMasked) + "</span></div>");
+        if (status.deviceId) rows.push('<div class="status-row"><span class="k">登录设备标识</span><span class="v">' + escapeHtml(status.deviceId) + "</span></div>");
+        if (status.deviceCount !== undefined) rows.push('<div class="status-row"><span class="k">设备数量</span><span class="v">' + escapeHtml(status.deviceCount) + "</span></div>");
         el("miStatus").innerHTML = rows.join("");
       }
 
@@ -852,12 +1532,67 @@ function renderAdminHtml(): string {
       }
 
       async function loadAdminData() {
-        await Promise.all([loadConfig(), loadSources(), loadPlugins(), loadPlaybackState()]);
+        await Promise.all([loadConfig(), loadSources(), loadPlugins(), loadPlaybackState(), loadListeningStats()]);
       }
 
       async function loadPlaybackState() {
         const playback = await api("/playback/state");
         renderPlaybackState(playback);
+      }
+
+      async function loadListeningStats() {
+        try {
+          const result = await api("/stats");
+          renderListeningStats(result.stats);
+        } catch {
+          el("listeningStats").innerHTML = '<div class="message warn">统计暂不可用</div>';
+        }
+      }
+
+      function renderListeningStats(stats) {
+        const container = el("listeningStats");
+        if (!stats) {
+          container.innerHTML = '<div class="message warn">暂无统计数据</div>';
+          return;
+        }
+        const win = stats.last30d || stats.overview || {};
+        const cards = [
+          { n: win.totalPlays ?? 0, l: "累计播放" },
+          { n: win.uniqueTracks ?? 0, l: "不同曲目" },
+          { n: win.uniqueArtists ?? 0, l: "艺术家" },
+          { n: win.activeDays ?? 0, l: "活跃天数" },
+        ];
+        const dist = (stats.sourceDist || []).slice(0, 4);
+        const distHtml = dist.length
+          ? '<div class="stat-dist">' +
+            dist
+              .map(
+                (item) =>
+                  '<div class="dist-row"><span class="k">' +
+                  escapeHtml(item.label || item.source) +
+                  '</span><span class="v">' +
+                  item.count +
+                  ' 次</span><div class="bar"><i style="width:' +
+                  Math.min(100, item.percent || 0) +
+                  '%"></i></div></div>',
+              )
+              .join("") +
+            "</div>"
+          : "";
+        container.innerHTML =
+          '<div class="stat-grid">' +
+          cards
+            .map(
+              (c) =>
+                '<div class="stat-card"><span class="n">' +
+                escapeHtml(c.n) +
+                '</span><span class="l">' +
+                escapeHtml(c.l) +
+                "</span></div>",
+            )
+            .join("") +
+          "</div>" +
+          distHtml;
       }
 
       async function loadConfig() {
@@ -1063,9 +1798,10 @@ function renderAdminHtml(): string {
 
       async function loginOrSetup() {
         await run(async () => {
+          const wasInitialized = state.initialized;
           const username = el("adminUser").value.trim();
           const password = el("adminPass").value;
-          const path = state.initialized ? "/auth/login" : "/auth/setup";
+          const path = wasInitialized ? "/auth/login" : "/auth/setup";
           const result = await api(path, {
             method: "POST",
             body: JSON.stringify({ username, password }),
@@ -1075,8 +1811,20 @@ function renderAdminHtml(): string {
           localStorage.setItem("hmusic_admin_token", state.token);
           await refreshAuthStatus();
           await Promise.all([refreshMiStatus(), listDevices(), loadAdminData()]);
-          showMessage(state.initialized ? "已登录" : "管理员账号已创建");
+          el("adminPass").value = "";
+          showMessage(wasInitialized ? "已登录" : "管理员账号已创建");
         });
+      }
+
+      function togglePasswordVisibility() {
+        const input = el("adminPass");
+        const button = el("passwordToggle");
+        const showPassword = input.type === "password";
+        input.type = showPassword ? "text" : "password";
+        button.title = showPassword ? "隐藏密码" : "显示密码";
+        button.setAttribute("aria-label", button.title);
+        button.setAttribute("aria-pressed", String(showPassword));
+        input.focus();
       }
 
       function buildMiPayload() {
@@ -1383,12 +2131,21 @@ function renderAdminHtml(): string {
         }
       }
 
-      el("authButton").addEventListener("click", loginOrSetup);
+      el("authForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+        loginOrSetup();
+      });
+      el("passwordToggle").addEventListener("click", togglePasswordVisibility);
       el("logoutButton").addEventListener("click", () => {
         stopMiWebVerificationPolling();
         state.token = "";
         state.user = null;
         localStorage.removeItem("hmusic_admin_token");
+        el("adminPass").value = "";
+        el("adminPass").type = "password";
+        el("passwordToggle").title = "显示密码";
+        el("passwordToggle").setAttribute("aria-label", "显示密码");
+        el("passwordToggle").setAttribute("aria-pressed", "false");
         renderAuth();
         renderRuntime();
       });
@@ -1407,6 +2164,10 @@ function renderAdminHtml(): string {
       el("refreshSourcesButton").addEventListener("click", () => run(loadSources));
       el("testToneButton").addEventListener("click", playTestTone);
       el("playbackStateButton").addEventListener("click", () => run(loadPlaybackState));
+      el("quickRefreshDevices").addEventListener("click", () => run(refreshDevices));
+      el("quickRefreshMi").addEventListener("click", () => run(refreshMiStatus));
+      el("quickReloadConfig").addEventListener("click", () => run(loadConfig));
+      el("quickRefreshStats").addEventListener("click", () => run(loadListeningStats));
       window.addEventListener("message", (event) => {
         if (event.origin !== window.location.origin) return;
         if (event.data?.type !== "hmusic-mi-web-verification-complete") return;

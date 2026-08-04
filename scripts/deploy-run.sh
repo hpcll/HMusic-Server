@@ -18,9 +18,10 @@ fi
 if [ ! -f .env ]; then
   cp .env.example .env
   echo
-  echo "!! 已生成 .env，请先修改这两项再重新运行本脚本："
-  echo "   HMUSIC_JWT_SECRET     改成一段随机长字符串"
-  echo "   HMUSIC_PUBLIC_BASE_URL 改成 http://<本机局域网IP>:8090"
+  echo "!! 已生成 .env，请先修改这几项再重新运行本脚本："
+  echo "   HMUSIC_JWT_SECRET      改成一段随机长字符串"
+  echo "   HMUSIC_PORT            如需换端口在此改（默认 6650）"
+  echo "   HMUSIC_PUBLIC_BASE_URL 端口要与 HMUSIC_PORT 一致，主机名可留 127.0.0.1（局域网 IPv4 自动探测）"
   echo "     （手机和小爱音箱都要能访问到这个地址）"
   exit 1
 fi
@@ -31,7 +32,11 @@ grep -q "change-me" .env && {
   echo "!! HMUSIC_JWT_SECRET 还是默认值 change-me，请修改后重试"; exit 1;
 }
 
+# 从 .env 读端口用于提示（读不到则回退默认 6650），避免脚本提示与实际端口脱节。
+PORT="$(grep -E '^HMUSIC_PORT=' .env | tail -n1 | cut -d= -f2 | tr -d '[:space:]')"
+PORT="${PORT:-6650}"
+
 echo "[3/3] 启动服务…"
-echo "  管理页:  http://<IP>:8090/admin"
-echo "  新前端:  http://<IP>:8090/app/"
+echo "  管理页:  http://<IP>:${PORT}/admin"
+echo "  新前端:  http://<IP>:${PORT}/app/"
 exec node dist/main.js

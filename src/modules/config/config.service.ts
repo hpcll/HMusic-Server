@@ -31,6 +31,9 @@ export type RuntimeConfig = {
   // 音箱播放前语音播报歌名（「即将播放 XX」）：仅远端小爱设备生效，
   // 播报失败不阻断播放。默认关闭（播报会拖慢开播 2-4 秒）。
   announceTracks: boolean;
+  // NAS 存量音乐目录（绝对路径）：扫描器只读遍历入库，不改动原文件。
+  // dataDir/music 始终扫描，无需在此重复声明。
+  libraryDirs: string[];
 };
 
 export const defaultRuntimeConfig: RuntimeConfig = {
@@ -42,6 +45,7 @@ export const defaultRuntimeConfig: RuntimeConfig = {
   lxPlugins: [],
   extraPlayMusicModels: [],
   announceTracks: false,
+  libraryDirs: [],
 };
 
 const configKey = "runtime";

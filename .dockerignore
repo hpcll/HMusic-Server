@@ -1,0 +1,36 @@
+# 构建上下文瘦身 + 安全：把不该进镜像的东西挡在门外。
+# 依赖在 builder 阶段用 npm ci 按目标架构重新编译，本地 node_modules 绝不能带进去
+# （否则会把 macOS/x86 编译的 better-sqlite3 原生二进制混进 arm64 镜像，直接跑崩）。
+
+# 依赖与产物：镜像内重新安装/编译
+node_modules/
+dist/
+
+# 运行时数据与密钥：绝不能进镜像
+data/
+.env
+.env.*
+!.env.example
+
+# 打包脚本产物
+hmusic-deploy.tar.gz
+
+# 版本控制与 IDE
+.git/
+.gitignore
+.idea/
+.vscode/
+.claude/
+
+# 系统与日志噪音
+.DS_Store
+**/.DS_Store
+*.log
+
+# 内部文档，不进镜像
+docs/
+
+# 测试与工具配置（运行时用不到）
+test/
+eslint.config.js
+drizzle.config.ts

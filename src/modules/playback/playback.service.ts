@@ -35,6 +35,7 @@ import {
 } from "../queue/queue.service.js";
 import { resolveTrack } from "../search/search.service.js";
 import { getLocalAudioUrl } from "../downloads/downloads.service.js";
+import { getLibraryAudioUrl } from "../library/library.service.js";
 import { kvGet, kvSet } from "../../db/kv.js";
 
 // 播放状态持久化：重启后恢复"正在放什么"（曲目/封面/进度/音量/模式），
@@ -172,8 +173,9 @@ export async function playTrack(
     );
   }
 
-  // 已下载到本地的歌优先走本地文件：零解析耗时、彻底免疫直链过期。
-  const localUrl = getLocalAudioUrl(input.track);
+  // 本地文件优先：曲库（扫描/上传/下载统一视图）先查，历史下载记录兜底。
+  // 零解析耗时、彻底免疫直链过期。
+  const localUrl = getLibraryAudioUrl(input.track) ?? getLocalAudioUrl(input.track);
   if (localUrl) {
     return playUrl({
       url: localUrl,

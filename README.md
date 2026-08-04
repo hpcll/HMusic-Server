@@ -119,6 +119,66 @@ bash scripts/deploy-run.sh   # 首次会生成 .env 并提示改 JWT_SECRET 与 
 
 启动后访问 `http://<server-ip>:8090/app/`（新前端）或 `/admin`（完整配置页）。
 
+## Docker 部署（各种 NAS / 服务器）
+
+镜像已发布到 GHCR（公开，双架构 amd64 + arm64）：
+
+```text
+ghcr.io/hpcll/hmusic-server:latest
+```
+
+### ⚠️ 先看这里：平台选择
+
+本服务依赖 **mDNS 局域网广播**（App 秒级发现）和 **真实网卡 IPv4 探测**（给小爱音箱下发可访问的音频地址）。这两点决定了部署方式：
+
+| 平台 | 推荐方式 | 原因 |
+|------|---------|------|
+| **Linux NAS**（群晖 / 威联通 / unRAID / 飞牛 / Debian…） | ✅ Docker + `network_mode: host` | host 网络下 mDNS 与局域网 IP 全自动，开箱即用 |
+| **macOS**（Docker Desktop） | ❌ 别用 Docker，改用原生 | Docker 跑在 VM 里，host 模式失效、mDNS 出不去 |
+| **Windows**（Docker Desktop / WSL2） | ❌ 别用 Docker，改用原生 | 同样 VM 隔离，mDNS 到不了物理局域网 |
+
+macOS / Windows 请用上面的「一键部署到另一台服务器」或直接 `npm ci && npm run build && npm start` 原生运行。
+
+### Linux NAS：docker compose（推荐）
+
+```bash
+# 1. 准备环境变量（必须改 HMUSIC_JWT_SECRET）
+cp .env.example .env
+# 编辑 .env，把 HMUSIC_JWT_SECRET 改成一段随机长字符串
+
+# 2. 拉起（compose 已内置 network_mode: host、数据卷、健康检查、自动重启）
+docker compose up -d
+
+# 3. 查看日志确认启动
+docker compose logs -f
+```
+
+访问 `http://<NAS局域网IP>:8090/app/`。数据（SQLite 库、下载的音乐 `music/`、LX 插件 `plugins/lx/`）全部持久化在宿主机 `./data`。
+
+升级到新版本：
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+### 关键说明
+
+- **`network_mode: host` 不可改桥接**：桥接网络会让 mDNS 多播出不去、容器只能拿到内网 `172.x` 地址，小爱音箱将连不上。这是本服务的硬约束。
+- **端口**：host 模式下服务直接监听宿主机 8090，不做 `-p` 端口映射。要换端口设 `.env` 里的 `HMUSIC_PORT`（宿主机上该端口需空闲）。
+- **`HMUSIC_PUBLIC_BASE_URL`**：局域网 IPv4 会自动探测，通常留默认。仅反向代理 / 公网域名场景才显式填写。
+- **数据备份**：直接备份宿主机 `./data` 目录即可。
+
+### 发布镜像（维护者）
+
+推一个 `v*` tag 即触发 GitHub Actions 自动构建双架构镜像并推送到 GHCR：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+工作流见 `.github/workflows/docker-publish.yml`。首次发布后需到 GitHub Packages 页面把镜像可见性设为 Public（或保持默认继承仓库可见性）。
+
 ## Verification
 
 ```bash

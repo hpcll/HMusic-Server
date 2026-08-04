@@ -1,5 +1,6 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
+import { startLibraryScan } from "./modules/library/library.service.js";
 import {
   startPlaybackWatchdog,
   stopPlaybackWatchdog,
@@ -32,6 +33,8 @@ try {
   startMdnsAdvertiser(app.log);
   // C-12：远端播放期间服务端自查设备状态，客户端退后台后自然播完仍能连播。
   startPlaybackWatchdog();
+  // 启动即增量扫一轮曲库：收编 music 目录孤儿与存量目录新文件（后台执行）。
+  startLibraryScan();
 } catch (error) {
   app.log.error(error);
   process.exit(1);

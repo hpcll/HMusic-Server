@@ -157,6 +157,51 @@ export function ensureSchema(): void {
 
     CREATE INDEX IF NOT EXISTS downloads_status_idx ON downloads(status);
     CREATE INDEX IF NOT EXISTS downloads_created_at_idx ON downloads(created_at);
+
+    CREATE TABLE IF NOT EXISTS library (
+      id TEXT PRIMARY KEY,
+      track_key TEXT NOT NULL UNIQUE,
+      origin TEXT NOT NULL DEFAULT 'scan',
+      source TEXT NOT NULL DEFAULT 'local',
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL DEFAULT '',
+      album TEXT,
+      duration_ms INTEGER,
+      cover_path TEXT,
+      cover_url TEXT,
+      lrc TEXT,
+      scrape_status TEXT NOT NULL DEFAULT 'pending',
+      folder TEXT NOT NULL DEFAULT '',
+      track_json TEXT,
+      file_path TEXT NOT NULL UNIQUE,
+      file_ext TEXT NOT NULL,
+      byte_size INTEGER NOT NULL DEFAULT 0,
+      mtime_ms INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS library_title_idx ON library(title);
+    CREATE INDEX IF NOT EXISTS library_artist_idx ON library(artist);
+    CREATE INDEX IF NOT EXISTS library_created_at_idx ON library(created_at);
+	  `);
+
+  // 存量库补列（新建库已在上面的 CREATE TABLE 里带上）。索引必须建在补列之后，
+  // 否则老库执行到 CREATE INDEX 时列还不存在，整段 exec 直接失败。
+  for (const statement of [
+    "ALTER TABLE library ADD COLUMN lrc TEXT;",
+    "ALTER TABLE library ADD COLUMN scrape_status TEXT NOT NULL DEFAULT 'pending';",
+    "ALTER TABLE library ADD COLUMN folder TEXT NOT NULL DEFAULT '';",
+  ]) {
+    try {
+      sqlite.exec(statement);
+    } catch {
+      // 列已存在（新建库或已迁移过），忽略。
+    }
+  }
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS library_folder_idx ON library(folder);
+    CREATE INDEX IF NOT EXISTS library_scrape_idx ON library(scrape_status);
 	  `);
 
   try {

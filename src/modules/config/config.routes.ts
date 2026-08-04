@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../../shared/auth.js";
@@ -57,6 +58,19 @@ const configPatchSchema = z
       )
       .optional(),
     announceTracks: z.boolean().optional(),
+    // 存量音乐目录：必须是绝对路径（扫描器按绝对路径遍历），拒相对路径与
+    // 空段，避免把整个文件系统根目录当曲库扫。
+    libraryDirs: z
+      .array(
+        z
+          .string()
+          .trim()
+          .min(1)
+          .max(512)
+          .refine((value) => path.isAbsolute(value), "音乐目录必须是绝对路径"),
+      )
+      .max(16)
+      .optional(),
   })
   .strict();
 

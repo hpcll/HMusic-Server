@@ -189,3 +189,44 @@ export const downloads = sqliteTable(
     createdAtIndex: index("downloads_created_at_idx").on(table.createdAt),
   }),
 );
+
+// NAS 本地曲库：磁盘上的音乐文件索引（扫描/上传/下载三种来源统一入库）。
+// file_path 存绝对路径——存量目录可以在 dataDir 之外，不能像 downloads 那样只存相对段。
+// mtime_ms + byte_size 做增量扫描指纹：两者都没变就跳过重读标签（千首级全量重扫太慢）。
+// track_key 唯一：扫描来源用 "local:<路径哈希>"，下载/上传沿用原始 source:sourceTrackId，
+// 同一首歌无论从哪条路进来都只占一条，不会在曲库里出现两份。
+export const library = sqliteTable(
+  "library",
+  {
+    id: text("id").primaryKey(),
+    trackKey: text("track_key").notNull().unique(),
+    origin: text("origin").notNull().default("scan"), // scan|upload|download
+    source: text("source").notNull().default("local"),
+    title: text("title").notNull(),
+    artist: text("artist").notNull().default(""),
+    album: text("album"),
+    durationMs: integer("duration_ms"),
+    coverPath: text("cover_path"), // 内嵌封面落盘后的相对 dataDir 路径
+    coverUrl: text("cover_url"), // 在线来源的原始封面地址
+    lrc: text("lrc"), // 刮削到的歌词（本地 .lrc 或在线匹配）
+    // 刮削状态：pending 待刮 / done 已完成 / miss 尝试过但没找到。
+    // miss 与 done 都不重复刮，避免每轮扫描都为无解曲目打一次在线请求。
+    scrapeStatus: text("scrape_status").notNull().default("pending"),
+    // 相对扫描根的目录路径（"" = 根目录直属），文件夹分类浏览用。
+    folder: text("folder").notNull().default(""),
+    trackJson: text("track_json"), // 下载/上传时保留的原始曲目快照
+    filePath: text("file_path").notNull().unique(), // 绝对路径
+    fileExt: text("file_ext").notNull(),
+    byteSize: integer("byte_size").notNull().default(0),
+    mtimeMs: integer("mtime_ms").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => ({
+    titleIndex: index("library_title_idx").on(table.title),
+    artistIndex: index("library_artist_idx").on(table.artist),
+    folderIndex: index("library_folder_idx").on(table.folder),
+    scrapeIndex: index("library_scrape_idx").on(table.scrapeStatus),
+    createdAtIndex: index("library_created_at_idx").on(table.createdAt),
+  }),
+);

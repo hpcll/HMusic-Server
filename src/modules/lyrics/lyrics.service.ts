@@ -1,4 +1,5 @@
 import type { HMusicLyric, HMusicTrack } from "../../shared/contracts.js";
+import { getLibraryLyric } from "../library/library.service.js";
 import { getPlaybackState } from "../playback/playback.service.js";
 import { getQueue } from "../queue/queue.service.js";
 import type { LxLyricResult } from "../sources/lx-plugin.runtime.js";
@@ -36,6 +37,21 @@ export async function getEmptyLyric(trackId: string): Promise<HMusicLyric> {
 export async function getLyricByTrack(
   track: HMusicTrack,
 ): Promise<HMusicLyric> {
+  // 本地曲库曲目：歌词在刮削阶段已落库（同名 .lrc 或在线匹配），直接取；
+  // 没刮到时不再走在线音源——local 身份在音源侧查无此曲，只会白等一轮超时。
+  if (track.source === "local") {
+    const lrc = getLibraryLyric(`${track.source}:${track.sourceTrackId}`);
+    if (!lrc) return getEmptyLyric(track.id);
+    return {
+      trackId: track.id,
+      source: "local",
+      lrc,
+      lines: parseLrc(lrc),
+      translatedLines: [],
+      updatedAt: Date.now(),
+    };
+  }
+
   // 先问音源插件；取不到词或只拿到「纯音乐」占位词时走 QQ 兜底源。
   let result = await getSourceTrackLyric(track);
   let source = track.source;

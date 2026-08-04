@@ -14,6 +14,7 @@ import {
   completeXiaomiIdentityChallenge,
   createXiaomiSessionFromWebCredentials,
   createXiaomiDeviceId,
+  fetchXiaomiConversations,
   fetchXiaomiDevices,
   loginXiaomiAccount,
   loginXiaomiMiioWithPassToken,
@@ -22,6 +23,7 @@ import {
   startXiaomiIdentityChallenge,
   startXiaomiQrLogin,
   waitXiaomiQrLogin,
+  type XiaomiConversationRecord,
   type XiaomiIdentityChallengeState,
   type XiaomiDevice,
   type XiaomiMiioSession,
@@ -1092,4 +1094,40 @@ function parseStoredCookiePairs(
   } catch {
     return [];
   }
+}
+
+// M3 语音接管 spike：拉指定（缺省第一台）音箱的最近对话记录，验证当前
+// 账号/固件能否读到。可行性一锤定音——拿不到 records 则 M3 改道或作废。
+export async function probeMiConversation(deviceIdFilter?: string): Promise<{
+  device: { deviceId: string; name: string; hardware: string };
+  records: XiaomiConversationRecord[];
+  raw: unknown;
+}> {
+  const session = await getStoredMiSession();
+  const devices = await fetchXiaomiDevices(session);
+  const device = deviceIdFilter
+    ? devices.find((item) => item.deviceId === deviceIdFilter)
+    : devices[0];
+  if (!device) {
+    throw new AppError(
+      "MI_CONVERSATION_NO_DEVICE",
+      "没有可用的小爱音箱设备",
+      404,
+    );
+  }
+  const result = await fetchXiaomiConversations({
+    session,
+    deviceId: device.deviceId,
+    hardware: device.hardware,
+    limit: 5,
+  });
+  return {
+    device: {
+      deviceId: device.deviceId,
+      name: device.name,
+      hardware: device.hardware,
+    },
+    records: result.records,
+    raw: result.raw,
+  };
 }

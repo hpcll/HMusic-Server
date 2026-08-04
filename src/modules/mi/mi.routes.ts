@@ -9,6 +9,7 @@ import {
   importMiWebSession,
   loginMiAccount,
   logoutMiAccount,
+  probeMiConversation,
   resendMiVerificationCode,
   startMiLoginVerification,
   startMiQrLogin,
@@ -19,6 +20,10 @@ import {
 // 冷启/回前台确认小米会话是否已过期；缺省保持纯数据库快照。
 const statusQuerySchema = z.object({
   verify: z.enum(["1", "true"]).optional(),
+});
+
+const conversationProbeQuerySchema = z.object({
+  deviceId: z.string().min(1).optional(),
 });
 
 const loginSchema = z
@@ -84,6 +89,13 @@ export async function miRoutes(app: FastifyInstance): Promise<void> {
   app.get("/status", async (request) => {
     const query = statusQuerySchema.parse(request.query);
     return getMiStatus({ verify: query.verify != null });
+  });
+
+  // M3 spike：真机验证能否拉到音箱对话记录（非公开接口，固件差异风险）。
+  // curl -H "Authorization: Bearer <token>" <base>/api/v1/mi/conversation/probe
+  app.get("/conversation/probe", async (request) => {
+    const query = conversationProbeQuerySchema.parse(request.query);
+    return probeMiConversation(query.deviceId);
   });
 
   app.post("/login", async (request) => {

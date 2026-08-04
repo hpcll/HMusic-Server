@@ -1125,6 +1125,75 @@ export async function fetchXiaomiDevices(
   });
 }
 
+export type XiaomiConversationRecord = {
+  query: string;
+  time: number;
+  requestId?: string;
+};
+
+// 语音接管 spike（M3）：拉音箱最近对话记录。非公开接口，与 xiaomusic 同源
+// （userprofile.mina.mi.com）；部分新固件可能拿不到——原始响应一并透出，
+// 供 /mi/conversation/probe 真机验证时人工判断。
+export async function fetchXiaomiConversations(input: {
+  session: XiaomiSession;
+  deviceId: string;
+  hardware: string;
+  limit?: number;
+}): Promise<{ records: XiaomiConversationRecord[]; raw: unknown }> {
+  const url = new URL(
+    "https://userprofile.mina.mi.com/device_profile/v2/conversation",
+  );
+  url.searchParams.set("source", "dialogu");
+  url.searchParams.set("hardware", input.hardware);
+  url.searchParams.set("timestamp", String(Date.now()));
+  url.searchParams.set("limit", String(input.limit ?? 5));
+
+  const response = await fetch(url, {
+    headers: {
+      Cookie:
+        `userId=${input.session.userId}; ` +
+        `serviceToken=${input.session.serviceToken}; ` +
+        `deviceId=${input.deviceId}`,
+      "User-Agent": minaUserAgent,
+    },
+  });
+  if (!response.ok) {
+    throw new AppError("MI_CONVERSATION_FAILED", "拉取对话记录失败", 502, {
+      statusCode: response.status,
+    });
+  }
+
+  const payload = (await response.json()) as { code?: number; data?: unknown };
+  // data 是 JSON 字符串（双重编码），失败保留原样供 probe 观察。
+  let parsed: unknown = payload.data;
+  if (typeof payload.data === "string") {
+    try {
+      parsed = JSON.parse(payload.data);
+    } catch {
+      parsed = payload.data;
+    }
+  }
+  const records: XiaomiConversationRecord[] = [];
+  if (parsed && typeof parsed === "object") {
+    const rows = (parsed as { records?: unknown }).records;
+    if (Array.isArray(rows)) {
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const item = row as Record<string, unknown>;
+        const query = asString(item.query);
+        const time = typeof item.time === "number" ? item.time : 0;
+        if (!query) continue;
+        records.push({
+          query,
+          time,
+          requestId: asString(item.requestId) || undefined,
+        });
+      }
+    }
+  }
+  return { records, raw: payload };
+}
+
 // 同一小爱音箱的 ubus 请求串行执行，避免快速切歌 / 连续操作时并发打架
 // key 为 deviceId，value 为该设备的请求尾链。
 const ubusQueues = new Map<string, Promise<unknown>>();
