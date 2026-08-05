@@ -73,7 +73,7 @@ export function trackFromClientSong(
   };
 }
 
-export function normalizeSource(source: string): string {
+function normalizeSource(source: string): string {
   const normalized = source.trim().toLowerCase();
   if (normalized === "qq" || normalized === "tencent") return "tx";
   if (normalized === "netease" || normalized === "wyy") return "wy";

@@ -111,11 +111,6 @@ export async function probeDevice(
   return device.capabilities;
 }
 
-export async function getSelectedDeviceId(): Promise<string | undefined> {
-  const selected = (await listDevices()).find((device) => device.isDefault);
-  return selected?.id;
-}
-
 export async function upsertDevice(
   input: UpsertDeviceInput,
 ): Promise<HMusicDevice> {

@@ -23,7 +23,7 @@ export function hasRealLyric(
   return !lines.every((line) => PLACEHOLDER_LINE.test(line));
 }
 
-export async function getEmptyLyric(trackId: string): Promise<HMusicLyric> {
+async function getEmptyLyric(trackId: string): Promise<HMusicLyric> {
   return {
     trackId,
     source: "none",

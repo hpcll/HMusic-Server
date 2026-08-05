@@ -122,7 +122,7 @@ export function listDownloads(): DownloadRecord[] {
     .map(rowToRecord);
 }
 
-export function getDownloadByTrackKey(trackKey: string): DownloadRecord | undefined {
+function getDownloadByTrackKey(trackKey: string): DownloadRecord | undefined {
   const row = db
     .select()
     .from(downloads)

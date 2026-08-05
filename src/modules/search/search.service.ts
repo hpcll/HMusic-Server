@@ -242,7 +242,7 @@ export function resolveAttemptOrder(
 
 // 在指定平台找"同一首歌"：标题归一后互相包含 + 歌手至少一位对上（有歌手信息时）。
 // 匹配从严——宁可回落原源，也不能换出翻唱/串烧。
-export async function findTrackOnPlatform(
+async function findTrackOnPlatform(
   platform: NativeSearchPlatform,
   track: HMusicTrack,
 ): Promise<HMusicTrack | undefined> {

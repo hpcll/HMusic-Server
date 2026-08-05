@@ -8,14 +8,14 @@ import { toast } from "/app/main.js";
 // 模型：下载是曲目级缓存，与歌单正交——任何列表行都可发起下载/显示角标。
 
 // ── 已下载状态（全站共享）：keys 供角标判断，list 供「已下载」视图播放 ──
-export const downloadedKeys = ref(new Set());
+const downloadedKeys = ref(new Set());
 export const downloadedList = ref([]); // status=done 的完整记录（含可播 track）
 
-export function trackKeyOf(track) {
+function trackKeyOf(track) {
   return track ? `${track.source}:${track.sourceTrackId}` : "";
 }
 
-export function isDownloaded(track) {
+function isDownloaded(track) {
   return downloadedKeys.value.has(trackKeyOf(track));
 }
 
