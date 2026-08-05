@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Script } from "node:vm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 let dataDir: string;
@@ -90,31 +89,6 @@ describe("api contract", () => {
       expect(testToneRange.statusCode).toBe(206);
       expect(testToneRange.headers["content-range"]).toMatch(/^bytes 0-3\//);
       expect(testToneRange.body).toBe("RIFF");
-
-      const adminPage = await app.inject({
-        method: "GET",
-        url: "/admin",
-      });
-      expect(adminPage.statusCode).toBe(200);
-      expect(adminPage.headers["content-type"]).toContain("text/html");
-      expect(adminPage.body).toContain("HMusic Server 管理");
-      expect(adminPage.body).toContain("运行配置");
-      expect(adminPage.body).toContain("LX 插件");
-      expect(adminPage.body).toContain("搜索与播放测试");
-      expect(adminPage.body).toContain("导入已有小米会话");
-      expect(adminPage.body).toContain("链路诊断");
-      expect(adminPage.body).toContain("播放测试音频");
-      expect(adminPage.body).toContain("网页登录验证");
-      expect(adminPage.body).toContain("自动接收登录结果");
-      expect(adminPage.body).not.toContain("验证完成地址");
-      const scriptStart =
-        adminPage.body.indexOf("<script>") + "<script>".length;
-      const scriptEnd = adminPage.body.lastIndexOf("</script>");
-      expect(scriptStart).toBeGreaterThanOrEqual("<script>".length);
-      expect(scriptEnd).toBeGreaterThan(scriptStart);
-      expect(
-        () => new Script(adminPage.body.slice(scriptStart, scriptEnd)),
-      ).not.toThrow();
 
       const unauthorized = await app.inject({
         method: "GET",

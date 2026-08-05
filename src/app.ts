@@ -3,7 +3,6 @@ import jwt from "@fastify/jwt";
 import Fastify from "fastify";
 import { env } from "./config/env.js";
 import { ensureSchema } from "./db/index.js";
-import { adminRoutes } from "./modules/admin/admin.routes.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
 import { chartsRoutes } from "./modules/charts/charts.routes.js";
 import { compatRoutes } from "./modules/compat/compat.routes.js";
@@ -51,7 +50,6 @@ export async function buildApp() {
   registerErrorHandler(app);
 
   await app.register(miPublicRoutes);
-  await app.register(adminRoutes);
   await app.register(webRoutes);
   await app.register(compatRoutes);
   await app.register(systemRoutes, { prefix: "/api/v1/system" });

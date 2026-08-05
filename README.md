@@ -16,13 +16,7 @@ Health check:
 curl http://127.0.0.1:8090/api/v1/system/info
 ```
 
-Web 管理页：
-
-```text
-http://127.0.0.1:8090/admin
-```
-
-现代前端（推荐给日常使用，含登录、正在播放、搜索、设置，移动端友好）：
+Web 前端：
 
 ```text
 http://127.0.0.1:8090/app/
@@ -31,9 +25,9 @@ http://127.0.0.1:8090/app/
 `/app/` 是一个基于 Vue 3 的单页应用（免构建，运行时已随仓库 vendored 到
 `web/vendor/`，局域网离线可用）。首次访问引导创建管理员账号，之后包含
 正在播放 / 搜索 / 队列 / 歌单 / 设置中心五页。设置中心已覆盖全部服务端配置：
-小米账号（**推荐米家 APP 扫码登录**，也支持账号密码+短信、导入会话）、播放设备、
+小米账号（**推荐米家 APP 扫码登录**，也支持账号密码+短信、网页验证、导入会话）、播放设备、
 LX 音源插件（选文件上传）、手工曲目、运行配置、链路诊断（测试音频 + TTS）、
-修改密码。`/admin` 保留为兜底入口。
+修改密码。
 
 完整功能清单见 [docs/FEATURES.md](docs/FEATURES.md)，界面设计说明见
 [docs/ui-redesign.md](docs/ui-redesign.md)。
@@ -52,7 +46,7 @@ HMUSIC_PUBLIC_BASE_URL=https://music.example.com
 
 推荐的本地验证顺序：
 
-1. 打开 `/admin` 创建管理员账号。
+1. 打开 `/app/` 创建管理员账号。
 2. 在 `/app/` 设置 → 小米账号里登录。**推荐扫码登录**（米家 APP 扫码，无短信无跳页）；也可用账号密码+短信验证（验证通过后 passToken 优先换凭据，不依赖手工粘贴 STS 地址）；极端情况用“导入会话”兜底。
 3. 刷新设备并选择默认播放设备。
 4. 在“链路诊断”区域播放内置测试音频，先确认服务端到小爱音箱的链路能出声。
@@ -117,7 +111,7 @@ tar -xzf hmusic-deploy.tar.gz
 bash scripts/deploy-run.sh   # 首次会生成 .env 并提示改 JWT_SECRET 与 PUBLIC_BASE_URL，改完重跑
 ```
 
-启动后访问 `http://<server-ip>:8090/app/`（新前端）或 `/admin`（完整配置页）。
+启动后访问 `http://<server-ip>:8090/app/`。
 
 ## Docker 部署（各种 NAS / 服务器）
 

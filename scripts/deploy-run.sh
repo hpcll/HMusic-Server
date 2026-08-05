@@ -37,6 +37,5 @@ PORT="$(grep -E '^HMUSIC_PORT=' .env | tail -n1 | cut -d= -f2 | tr -d '[:space:]
 PORT="${PORT:-6650}"
 
 echo "[3/3] 启动服务…"
-echo "  管理页:  http://<IP>:${PORT}/admin"
-echo "  新前端:  http://<IP>:${PORT}/app/"
+echo "  Web 前端:  http://<IP>:${PORT}/app/"
 exec node dist/main.js
