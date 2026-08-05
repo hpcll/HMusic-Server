@@ -30,6 +30,11 @@ export const MiAccountSection = {
     const smsCode = ref("");
     const busy = ref(false);
 
+    // ── 网页验证状态 ──
+    const webVerify = ref(null); // {verificationId, expiresAt}
+    let webVerifyWindow = null;
+    let webVerifyPollTimer = 0;
+
     // ── 导入通道状态 ──
     const importUrl = ref("");
     const importToken = ref("");
@@ -57,6 +62,8 @@ export const MiAccountSection = {
       qrRemain.value = "";
       tab.value = "qr";
       challenge.value = null;
+      stopWebVerifyPolling();
+      webVerify.value = null;
     }
 
     // ===== 扫码 =====
@@ -169,7 +176,15 @@ export const MiAccountSection = {
         await loadStatus();
         toast(`登录成功，发现 ${result.deviceCount ?? 0} 台设备`, "success");
       } catch (error) {
-        toast(error.message, "error");
+        // 短信验证失败时，检查是否需要降级到网页验证。
+        // ApiError 把后端 code 直接挂在 error.code 上（见 api.js）。
+        if (error.code === "MI_IDENTITY_STS_INVALID" || error.code === "MI_IDENTITY_STS_MISSING") {
+          toast("短信验证已通过，但小米没有返回有效凭证，正在改用网页验证", "info");
+          challenge.value = null;
+          await startWebVerify();
+        } else {
+          toast(error.message, "error");
+        }
       } finally {
         busy.value = false;
       }
@@ -185,6 +200,93 @@ export const MiAccountSection = {
       } catch (error) {
         toast(error.message, "error");
       }
+    }
+
+    // ===== 网页验证 =====
+    function stopWebVerifyPolling() {
+      clearInterval(webVerifyPollTimer);
+      webVerifyPollTimer = 0;
+    }
+
+    async function startWebVerify() {
+      stopWebVerifyPolling();
+      webVerifyWindow = null;
+      try {
+        webVerifyWindow = window.open("about:blank", "_blank");
+        if (webVerifyWindow) webVerifyWindow.opener = null;
+      } catch {
+        webVerifyWindow = null;
+      }
+
+      busy.value = true;
+      try {
+        const result = await api("/mi/web-verification/start", {
+          method: "POST",
+          body: {
+            account: account.value.trim(),
+            password: password.value,
+            ...(captcha.value.trim() ? { captchaCode: captcha.value.trim() } : {}),
+          },
+        });
+
+        if (result.loggedIn) {
+          if (webVerifyWindow && !webVerifyWindow.closed) webVerifyWindow.close();
+          await loadStatus();
+          toast(`登录成功，发现 ${result.deviceCount ?? 0} 台设备`, "success");
+          return;
+        }
+
+        webVerify.value = result;
+        const url = `/mi-web-verification/${encodeURIComponent(result.verificationId)}`;
+        if (webVerifyWindow && !webVerifyWindow.closed) {
+          webVerifyWindow.location.href = url;
+        }
+        toast("请在新窗口完成小米验证，后台会自动检测登录结果", "info");
+        webVerifyPollTimer = setInterval(pollWebVerify, 2000);
+      } catch (error) {
+        if (webVerifyWindow && !webVerifyWindow.closed) webVerifyWindow.close();
+        toast(error.message, "error");
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function pollWebVerify() {
+      try {
+        const status = await api("/mi/status");
+        if (status.loggedIn) {
+          stopWebVerifyPolling();
+          webVerify.value = null;
+          if (webVerifyWindow && !webVerifyWindow.closed) webVerifyWindow.close();
+          await loadStatus();
+          toast(`登录成功，发现 ${status.deviceCount ?? 0} 台设备`, "success");
+        }
+      } catch {
+        // 轮询失败忽略,下一轮继续
+      }
+    }
+
+    async function retryWebVerify() {
+      try {
+        const status = await api("/mi/status");
+        if (status.loggedIn) {
+          stopWebVerifyPolling();
+          webVerify.value = null;
+          if (webVerifyWindow && !webVerifyWindow.closed) webVerifyWindow.close();
+          await loadStatus();
+          toast(`登录成功，发现 ${status.deviceCount ?? 0} 台设备`, "success");
+        } else {
+          toast("还没有检测到网页登录完成，请确认新窗口验证已完成", "info");
+        }
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    function handleWebVerifyMessage(event) {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "hmusic-mi-web-verification-complete") return;
+      pollWebVerify(); // 弹窗通知完成,立即检查一次
     }
 
     // ===== 导入 =====
@@ -222,8 +324,15 @@ export const MiAccountSection = {
       }
     }
 
-    onMounted(loadStatus);
-    onUnmounted(stopQrTimers);
+    onMounted(() => {
+      loadStatus();
+      window.addEventListener("message", handleWebVerifyMessage);
+    });
+    onUnmounted(() => {
+      stopQrTimers();
+      stopWebVerifyPolling();
+      window.removeEventListener("message", handleWebVerifyMessage);
+    });
 
     const TABS = [
       { key: "qr", label: "扫码登录" },
@@ -354,7 +463,44 @@ export const MiAccountSection = {
             disabled: busy.value,
             onClick: loginPassword,
           }, busy.value ? "登录中…" : "登录小米账号"),
+          h("p", { class: "hint" }, [
+            "收不到短信？",
+            h("button", {
+              class: "ghost-btn",
+              disabled: busy.value,
+              onClick: startWebVerify,
+            }, "改用网页验证登录"),
+          ]),
         ]),
+
+        // 网页验证进行中：小米只放网页验证时的通道，弹窗完成后自动检测。
+        webVerify.value
+          ? h("section", { class: "card sms-card" }, [
+              h("div", { class: "card-title" }, "请在新窗口完成小米网页验证"),
+              h("p", { class: "muted" },
+                "完成后服务端会自动接收登录结果，无需手工复制地址。"),
+              webVerify.value.expiresAt
+                ? h("p", { class: "hint" },
+                    `验证会话有效期至 ${new Date(webVerify.value.expiresAt).toLocaleTimeString()}。`)
+                : null,
+              h("div", { class: "sms-actions" }, [
+                h("a", {
+                  class: "ghost-btn",
+                  href: `/mi-web-verification/${encodeURIComponent(webVerify.value.verificationId)}`,
+                  target: "_blank",
+                  rel: "noopener",
+                }, "重新打开验证页"),
+                h("button", { class: "ghost-btn", onClick: retryWebVerify }, "检查登录状态"),
+                h("button", {
+                  class: "ghost-btn",
+                  onClick: () => {
+                    stopWebVerifyPolling();
+                    webVerify.value = null;
+                  },
+                }, "取消"),
+              ]),
+            ])
+          : null,
 
         challenge.value
           ? h("section", { class: "card sms-card" }, [
