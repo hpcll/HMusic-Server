@@ -531,4 +531,7 @@ async function boot() {
 }
 
 createApp(App).mount("#app");
+
+// 通知 index.html 的看门狗：前端已正常渲染
+if (window.__hmusicBooted) window.__hmusicBooted();
 boot();

@@ -21,9 +21,124 @@
       }
     </script>
     <script src="/app/vendor/qrcode.js"></script>
+    <style>
+      /* 兜底页样式内联：styles.css 本身就可能是加载失败的那个 */
+      #bootError {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #f7f7f8;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      }
+      #bootError[hidden] {
+        display: none;
+      }
+      .boot-error-card {
+        max-width: 420px;
+        padding: 28px;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        text-align: center;
+      }
+      .boot-error-card h1 {
+        margin: 0 0 10px;
+        font-size: 17px;
+      }
+      .boot-error-card p {
+        margin: 0 0 8px;
+        color: #6b6b70;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .boot-error-detail:empty {
+        display: none;
+      }
+      .boot-error-detail {
+        overflow-wrap: anywhere;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #f3f3f5;
+        color: #8a8a8f !important;
+        font-size: 12px !important;
+      }
+      .boot-error-card button {
+        margin-top: 14px;
+        padding: 9px 20px;
+        border: 0;
+        border-radius: 8px;
+        background: #1a1a1c;
+        color: #fff;
+        font-size: 13px;
+        cursor: pointer;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+
+    <!-- 兜底：全站 22 个模块都是静态 import 且无动态加载，任何一个取不到
+         或有语法错都会让整站白屏。这里兜住三种情况——模块加载失败、
+         运行时异常、以及都没报错但迟迟没渲染出东西。 -->
+    <div id="bootError" hidden>
+      <div class="boot-error-card">
+        <h1>页面没能加载</h1>
+        <p>服务端是通的，但前端资源没跑起来。多为文件损坏或改动引入的语法错。</p>
+        <p class="boot-error-detail" id="bootErrorDetail"></p>
+        <button type="button" onclick="location.reload(true)">重新加载</button>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var done = false;
+        var elErr = document.getElementById("bootError");
+        var elDetail = document.getElementById("bootErrorDetail");
+
+        function fail(detail) {
+          if (done) return;
+          done = true;
+          if (detail) elDetail.textContent = detail;
+          elErr.hidden = false;
+        }
+
+        // 渲染成功就撤掉看门狗
+        window.__hmusicBooted = function () {
+          done = true;
+          if (timer) clearTimeout(timer);
+        };
+
+        // 1) 模块/脚本加载失败（捕获阶段才能拿到资源错误）
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e.target;
+            if (t && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
+              fail("资源加载失败：" + (t.src || t.href || ""));
+            } else if (e.message) {
+              fail(e.message);
+            }
+          },
+          true,
+        );
+
+        window.addEventListener("unhandledrejection", function (e) {
+          fail(String((e.reason && e.reason.message) || e.reason || ""));
+        });
+
+        // 2) 没有任何报错但就是没渲染（例如挂在某个 await 上）
+        var timer = setTimeout(function () {
+          var app = document.getElementById("app");
+          if (!app || app.children.length === 0) {
+            fail("前端脚本超过 10 秒没有渲染出内容。");
+          }
+        }, 10000);
+      })();
+    </script>
+
     <script type="module" src="/app/main.js"></script>
   </body>
 </html>
