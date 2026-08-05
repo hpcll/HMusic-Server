@@ -506,6 +506,31 @@ function renderAdminHtml(): string {
         break-inside: avoid;
       }
 
+      /* 两列等宽后，纯键值卡撑到 550px 显得空。只有服务端状态这类
+         「短标签 + 短值」适合切两栏；.status 基类被小米账号和听歌统计
+         共用，不能动，所以定向到 #runtimeStatus。 */
+      #runtimeStatus {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 22px;
+      }
+
+      /* 切两栏后每行有两格，.status-row:last-child 只能去掉一条边框，
+         末行另一格会残留虚线。改为从倒数第二个起算。 */
+      #runtimeStatus .status-row:nth-last-child(-n + 2) {
+        border-bottom: none;
+      }
+
+      @media (max-width: 560px) {
+        #runtimeStatus {
+          grid-template-columns: 1fr;
+        }
+
+        /* 收回单列后倒数第二行要还原边框 */
+        #runtimeStatus .status-row:nth-last-child(2) {
+          border-bottom: 1px dashed var(--line);
+        }
+      }
+
       .stat-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
