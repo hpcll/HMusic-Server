@@ -1,5 +1,5 @@
 import { createApp, reactive, h } from "vue";
-import { api, getToken, setToken, clearToken } from "/app/api.js";
+import { api, clearToken } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { LoginView } from "/app/views/login.js";
 import { PlayerView } from "/app/views/player.js";
@@ -512,8 +512,6 @@ const MobileNav = {
 };
 
 // ===== 启动 =====
-let playbackTimer = 0;
-
 async function boot() {
   // 无 token 时也要拿 initialized 状态（决定登录还是首次创建管理员）。
   try {
@@ -525,7 +523,8 @@ async function boot() {
   store.ready = true;
   applyRoute();
   // sidebar 的 mini 播放状态需要全局轮询（播放页自身还有更快的本地插值）。
-  playbackTimer = setInterval(() => {
+  // 不留 timer 句柄：这是与页面同生命周期的常驻轮询，没有清理时机。
+  setInterval(() => {
     if (store.authenticated) refreshPlayback();
   }, 10000);
 }
