@@ -13,13 +13,13 @@ npm run dev
 Health check:
 
 ```bash
-curl http://127.0.0.1:8090/api/v1/system/info
+curl http://127.0.0.1:6650/api/v1/system/info
 ```
 
 Web 前端：
 
 ```text
-http://127.0.0.1:8090/app/
+http://127.0.0.1:6650/app/
 ```
 
 `/app/` 是一个基于 Vue 3 的单页应用（免构建，运行时已随仓库 vendored 到
@@ -96,7 +96,7 @@ npm run build
 npm start
 ```
 
-部署时必须修改 `.env` 里的 `HMUSIC_JWT_SECRET`，并把 `HMUSIC_DATA_DIR` 指向持久化目录。App 访问地址填写 `http://<server-ip>:8090` 或反向代理后的 HTTPS 地址；`HMUSIC_PUBLIC_BASE_URL` 仅在反向代理或公网域名场景需要填写，局域网 IPv4 会自动探测。
+部署时必须修改 `.env` 里的 `HMUSIC_JWT_SECRET`，并把 `HMUSIC_DATA_DIR` 指向持久化目录。App 访问地址填写 `http://<server-ip>:6650` 或反向代理后的 HTTPS 地址；`HMUSIC_PUBLIC_BASE_URL` 仅在反向代理或公网域名场景需要填写，局域网 IPv4 会自动探测。
 
 ### 一键部署到另一台服务器
 
@@ -111,15 +111,41 @@ tar -xzf hmusic-deploy.tar.gz
 bash scripts/deploy-run.sh   # 首次会生成 .env 并提示改 JWT_SECRET 与 PUBLIC_BASE_URL，改完重跑
 ```
 
-启动后访问 `http://<server-ip>:8090/app/`。
+启动后访问 `http://<server-ip>:6650/app/`。
+
+### Linux 裸机：开机自启（systemd）
+
+`deploy-run.sh` 是前台运行，关掉终端服务就停。要长期跑，装成 systemd 服务：
+
+```bash
+sudo bash scripts/install-systemd.sh          # 不传参则用当前项目路径
+sudo systemctl status hmusic-server            # 确认 active (running)
+journalctl -u hmusic-server -f                 # 跟踪日志
+```
+
+脚本会先校验 `dist/main.js` 存在、`.env` 存在且 `HMUSIC_JWT_SECRET` 已改掉
+默认值、Node ≥ 20，任一不满足直接报错退出而不是装一个起不来的服务。随后
+创建无登录权限的系统用户 `hmusic`、把 `data/` 与 `.env` 归属给它（`.env`
+含密钥，chmod 600），再把 `scripts/hmusic-server.service` 里的路径占位替换成
+实际值后安装到 `/etc/systemd/system/` 并 enable + start。
+
+重启机器自动拉起，进程崩溃自动重启。卸载：
+
+```bash
+sudo systemctl disable --now hmusic-server
+sudo rm /etc/systemd/system/hmusic-server.service && sudo systemctl daemon-reload
+```
 
 ## Docker 部署（各种 NAS / 服务器）
 
-镜像已发布到 GHCR（公开，双架构 amd64 + arm64）：
+镜像已发布到 GHCR，双架构 amd64 + arm64（v0.1.0 起）：
 
 ```text
 ghcr.io/hpcll/hmusic-server:latest
 ```
+
+拉取报 `denied` / `unauthorized` 说明包还是 private，见文末
+「发布镜像（维护者）」里的可见性设置步骤。
 
 ### ⚠️ 先看这里：平台选择
 
@@ -147,7 +173,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-访问 `http://<NAS局域网IP>:8090/app/`。数据（SQLite 库、下载的音乐 `music/`、LX 插件 `plugins/lx/`）全部持久化在宿主机 `./data`。
+访问 `http://<NAS局域网IP>:6650/app/`。数据（SQLite 库、下载的音乐 `music/`、LX 插件 `plugins/lx/`）全部持久化在宿主机 `./data`。
 
 升级到新版本：
 
@@ -158,7 +184,7 @@ docker compose pull && docker compose up -d
 ### 关键说明
 
 - **`network_mode: host` 不可改桥接**：桥接网络会让 mDNS 多播出不去、容器只能拿到内网 `172.x` 地址，小爱音箱将连不上。这是本服务的硬约束。
-- **端口**：host 模式下服务直接监听宿主机 8090，不做 `-p` 端口映射。要换端口设 `.env` 里的 `HMUSIC_PORT`（宿主机上该端口需空闲）。
+- **端口**：host 模式下服务直接监听宿主机 6650，不做 `-p` 端口映射。要换端口设 `.env` 里的 `HMUSIC_PORT`（宿主机上该端口需空闲）。
 - **`HMUSIC_PUBLIC_BASE_URL`**：局域网 IPv4 会自动探测，通常留默认。仅反向代理 / 公网域名场景才显式填写。
 - **数据备份**：直接备份宿主机 `./data` 目录即可。
 
@@ -171,7 +197,14 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-工作流见 `.github/workflows/docker-publish.yml`。首次发布后需到 GitHub Packages 页面把镜像可见性设为 Public（或保持默认继承仓库可见性）。
+会自动打上四个标签：`0.1.0`、`0.1`、`v0.1.0`、`latest`。工作流见
+`.github/workflows/docker-publish.yml`。
+
+⚠️ **首次发布后必须手动把包设为 Public**：GHCR 新建的包默认 private，
+此时用户 `docker compose pull` 会因无权限失败（匿名拉取返回 401）。
+去 `https://github.com/users/hpcll/packages/container/hmusic-server/settings`
+→ Danger Zone → Change visibility → Public。这一步只需做一次，
+后续版本继承该可见性。
 
 ## Verification
 
