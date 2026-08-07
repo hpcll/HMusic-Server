@@ -2,6 +2,21 @@
 
 HMusic App 的自建后端，负责服务端登录、运行配置、小米账号设备、音源插件、搜索解析和小爱音箱播放控制。
 
+## 快速开始
+
+装到 NAS 或服务器上，一条命令：
+
+```bash
+git clone https://github.com/hpcll/HMusic-Server.git
+cd HMusic-Server
+bash install.sh
+```
+
+自动完成：选择 Docker 或原生方式、生成随机 JWT 密钥、启动服务、打印访问地址。
+浏览器打开提示的地址即可创建管理员账号，然后在「设置 → 小米账号」扫码登录小米。
+
+细节和平台差异见 [Docker 部署](#docker-部署各种-nas--服务器)。
+
 ## Development
 
 ```bash
@@ -160,6 +175,16 @@ ghcr.io/hpcll/hmusic-server:latest
 macOS / Windows 请用上面的「一键部署到另一台服务器」或直接 `npm ci && npm run build && npm start` 原生运行。
 
 ### Linux NAS：docker compose（推荐）
+
+```bash
+bash install.sh
+```
+
+脚本会自动判断该用 Docker 还是原生方式、生成 `.env` 并随机化 JWT 密钥、拉镜像启动，
+最后打印出手机能直接打开的局域网地址。重复执行安全 —— 已有的 `.env` 不会被覆盖，
+密钥不变、登录态不失效。
+
+想自己一步步来也可以：
 
 ```bash
 # 1. 准备环境变量（必须改 HMUSIC_JWT_SECRET）

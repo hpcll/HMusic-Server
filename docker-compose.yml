@@ -7,8 +7,11 @@
 # ⚠️ macOS / Windows 的 Docker Desktop 跑在 VM 里，host 模式形同虚设、mDNS 失效，
 #    不要用本文件；请改用原生方式（见 README「其他平台」）。
 #
-# 使用：
-#   1) cp .env.example .env  然后改 HMUSIC_JWT_SECRET（必须）
+# 使用（推荐）：
+#   bash install.sh          ← 自动生成 .env、随机密钥、拉镜像、启动，一步到位
+#
+# 手动方式：
+#   1) cp .env.example .env  然后把 HMUSIC_JWT_SECRET 改成一段随机长字符串（必须）
 #   2) docker compose up -d
 #   3) 访问 http://<NAS局域网IP>:6650/app/
 
@@ -23,8 +26,9 @@ services:
     network_mode: host
 
     environment:
-      # 必改：一段随机长字符串。默认 change-me 会被服务拒绝启动。
-      HMUSIC_JWT_SECRET: ${HMUSIC_JWT_SECRET:?请在 .env 里设置 HMUSIC_JWT_SECRET}
+      # 必填：一段随机长字符串。留空或 change-me 都会被服务拒绝启动。
+      # `:?` 让缺 .env 时立刻报错并指明原因，而不是启动后才失败。
+      HMUSIC_JWT_SECRET: ${HMUSIC_JWT_SECRET:?缺少 HMUSIC_JWT_SECRET。请先运行 bash install.sh 自动生成，或手动 cp .env.example .env 并填写}
       HMUSIC_PORT: ${HMUSIC_PORT:-6650}
       HMUSIC_LOG_LEVEL: ${HMUSIC_LOG_LEVEL:-info}
       # 局域网 IPv4 会自动探测，通常留默认即可；仅反代/公网域名时才显式填写。

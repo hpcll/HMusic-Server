@@ -30,7 +30,7 @@ NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 # ---- 运行用户：优先复用已存在的 hmusic，否则建一个无登录权限的系统用户 ----
 RUN_USER=hmusic
 if ! id -u "$RUN_USER" >/dev/null 2>&1; then
-  echo "创建系统用户 $RUN_USER…"
+  echo "创建系统用户 ${RUN_USER}…"
   useradd --system --no-create-home --shell /usr/sbin/nologin "$RUN_USER"
 fi
 
