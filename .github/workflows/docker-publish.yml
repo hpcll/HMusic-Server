@@ -37,6 +37,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # 从 git ref 自动推导 tags：vX.Y.Z → X.Y.Z / X.Y / latest。
+      # latest 在推 tag 时打上,确保 compose 里 :latest 能拉到最新版本。
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -45,7 +46,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
             type=ref,event=tag
 
       - name: Build and push (amd64 + arm64)

@@ -1,0 +1,60 @@
+# HMusic Server systemd 服务单元（Debian/Ubuntu/树莓派/Armbian 等裸机部署）。
+#
+# 安装：
+#   sudo cp scripts/hmusic-server.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/hmusic-server.service   # 改 User 和 WorkingDirectory
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now hmusic-server
+#
+# 查看状态与日志：
+#   systemctl status hmusic-server
+#   journalctl -u hmusic-server -f
+
+[Unit]
+Description=HMusic Server
+Documentation=https://github.com/hpcll/HMusic-Server
+# 需要网络就绪：服务启动时要探测局域网 IPv4 并广播 mDNS。
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# ⚠️ 按实际情况修改这两项 ——
+# User 用普通用户即可（不需要 root，6650 是非特权端口）。
+User=hmusic
+WorkingDirectory=/opt/hmusic-server
+
+# .env 由 deploy-run.sh 生成；EnvironmentFile 让 systemd 直接读，
+# 不依赖 dotenv 的相对路径解析。前缀 - 表示文件不存在时不报错。
+EnvironmentFile=-/opt/hmusic-server/.env
+Environment=NODE_ENV=production
+
+ExecStart=/usr/bin/node dist/main.js
+
+# 异常退出后自动重启，但限制频率避免疯狂重启刷日志。
+Restart=on-failure
+RestartSec=5s
+StartLimitInterval=60s
+StartLimitBurst=3
+
+# 日志走 journald，用 journalctl -u hmusic-server 查看。
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hmusic-server
+
+# ---- 安全加固（在不影响功能的前提下收紧权限）----
+# 服务只需要读自己的目录 + 写 data/，不需要碰系统其它地方。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# data/ 是唯一需要写的地方（SQLite 库 + 下载的音乐 + LX 插件）。
+ReadWritePaths=/opt/hmusic-server/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
