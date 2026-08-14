@@ -5,139 +5,204 @@
 #   bash install.sh              # 自动选择最合适的方式
 #   bash install.sh --docker     # 强制走 Docker
 #   bash install.sh --native     # 强制走原生 Node
+#   bash install.sh --update     # 拉取最新版并升级（保留配置和数据）
 #
 # 重复执行安全：已有 .env 不会被覆盖（密钥不会变，登录态不失效）。
 set -euo pipefail
 
 cd "$(dirname "$0")"
+OS="$(uname -s)"
+. scripts/deploy-common.sh
 
 MODE=auto
+UPDATE=false
+NEXT_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --docker) MODE=docker ;;
-    --native) MODE=native ;;
+    --docker) MODE=docker; NEXT_ARGS+=("$arg") ;;
+    --native) MODE=native; NEXT_ARGS+=("$arg") ;;
+    --update) UPDATE=true ;;
     -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
-    *) echo "未知参数：${arg}（可用：--docker / --native）" >&2; exit 1 ;;
+    *) echo "未知参数：${arg}（可用：--docker / --native / --update）" >&2; exit 1 ;;
   esac
 done
 
-say()  { printf '\033[36m%s\033[0m\n' "$*"; }
-ok()   { printf '\033[32m✅ %s\033[0m\n' "$*"; }
-warn() { printf '\033[33m⚠️  %s\033[0m\n' "$*"; }
-die()  { printf '\033[31m❌ %s\033[0m\n' "$*" >&2; exit 1; }
+if $UPDATE && [ "${HMUSIC_UPDATE_DONE:-0}" != 1 ]; then
+  if [ ! -d .git ] && [ -f bootstrap.sh ]; then
+    ok "检测到 Release 部署包安装，切换到最新版部署包升级"
+    export HMUSIC_INSTALL_DIR="$PWD"
+    if [ "${#NEXT_ARGS[@]}" -gt 0 ]; then
+      exec bash bootstrap.sh "${NEXT_ARGS[@]}"
+    fi
+    exec bash bootstrap.sh
+  fi
+  update_checkout
+  ok "继续执行最新版安装器"
+  export HMUSIC_UPDATE_DONE=1
+  if [ "${#NEXT_ARGS[@]}" -gt 0 ]; then
+    exec bash "$0" "${NEXT_ARGS[@]}"
+  fi
+  exec bash "$0"
+fi
 
 # ---------- 1. 选择安装方式 ----------
-OS="$(uname -s)"
 has_docker=false
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  has_docker=true
+docker_present=false
+if command -v docker >/dev/null 2>&1; then
+  docker_present=true
+  docker info >/dev/null 2>&1 && has_docker=true
+fi
+
+systemd_native=false
+if [ "$OS" = Linux ] && command -v systemctl >/dev/null 2>&1; then
+  if systemctl is-active --quiet hmusic-server 2>/dev/null \
+    || systemctl is-enabled --quiet hmusic-server 2>/dev/null; then
+    systemd_native=true
+  fi
+fi
+
+PREVIOUS_MODE="$(read_deploy_mode)"
+if [ -z "$PREVIOUS_MODE" ]; then
+  if [ -f data/hmusic.pid ]; then
+    PREVIOUS_MODE=native
+  elif $systemd_native; then
+    PREVIOUS_MODE=native
+  elif $has_docker && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx hmusic-server; then
+    PREVIOUS_MODE=docker
+  fi
 fi
 
 if [ "$MODE" = auto ]; then
+  if [ -n "$PREVIOUS_MODE" ]; then
+    MODE="$PREVIOUS_MODE"
+    ok "沿用上次部署方式：${MODE}"
+  else
   # macOS / Windows(WSL) 的 Docker Desktop 跑在 VM 里，host 网络失效、mDNS 出不去，
   # 音箱会连不上——这两个平台即使有 Docker 也默认走原生。
-  case "$OS" in
-    Linux)  $has_docker && MODE=docker || MODE=native ;;
-    Darwin) MODE=native ;;
-    *)      MODE=native ;;
-  esac
+    case "$OS" in
+      Linux)  $has_docker && MODE=docker || MODE=native ;;
+      Darwin) MODE=native ;;
+      *)      MODE=native ;;
+    esac
+  fi
 fi
 
 if [ "$MODE" = docker ] && ! $has_docker; then
+  if [ "$PREVIOUS_MODE" = docker ]; then
+    die "上次使用 Docker 部署，但当前无法连接 Docker 服务。请先启动 Docker 或修复当前用户权限后重试。"
+  fi
   die "指定了 --docker，但没检测到可用的 Docker（装了吗？服务起了吗？当前用户有权限吗？）"
+fi
+
+if [ "$PREVIOUS_MODE" = docker ] && [ "$MODE" = native ] && ! $has_docker; then
+  die "上次使用 Docker 部署。切换到原生方式前需要先恢复 Docker 访问，以便安全停止旧容器。"
+fi
+if [ "$MODE" = native ] && $docker_present && ! $has_docker && [ "$OS" = Linux ]; then
+  warn "检测到 Docker 命令，但当前无法连接 Docker 服务（服务未启动或用户无权限），将改用原生 Node 方式。"
+fi
+if [ "$PREVIOUS_MODE" = native ] && [ "$MODE" = docker ] \
+  && $systemd_native && [ "$(id -u)" -ne 0 ]; then
+  die "上次使用 systemd 原生部署。切换 Docker 前请用 sudo bash install.sh --docker，让安装器安全停止旧服务。"
 fi
 
 say "安装方式：${MODE}（系统：${OS}）"
 echo
 
 # ---------- 2. 生成 .env（含随机密钥）----------
-gen_secret() {
-  # 优先 openssl，退回 /dev/urandom，都没有再用 node。
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 32
-  elif [ -r /dev/urandom ]; then
-    LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 64
-  elif command -v node >/dev/null 2>&1; then
-    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-  else
-    die "无法生成随机密钥（缺 openssl / /dev/urandom / node）"
-  fi
-}
+ensure_env
 
-if [ -f .env ]; then
-  ok ".env 已存在，保留原有配置（不覆盖，登录态和密钥不变）"
-  if grep -q '^HMUSIC_JWT_SECRET=change-me$' .env; then
-    warn "检测到 JWT 密钥仍是默认值 change-me，正在替换为随机密钥…"
-    SECRET="$(gen_secret)"
-    # BSD sed(macOS) 与 GNU sed 的 -i 参数不兼容，用临时文件绕开。
-    sed "s|^HMUSIC_JWT_SECRET=.*|HMUSIC_JWT_SECRET=$SECRET|" .env > .env.tmp && mv .env.tmp .env
-    ok "已替换为随机密钥"
-  fi
-else
-  [ -f .env.example ] || die "缺少 .env.example，仓库不完整"
-  SECRET="$(gen_secret)"
-  sed "s|^HMUSIC_JWT_SECRET=.*|HMUSIC_JWT_SECRET=$SECRET|" .env.example > .env
-  ok "已生成 .env，JWT 密钥已自动随机化（无需手动编辑）"
-fi
+PORT="$(read_port)"
+sync_loopback_public_base_port "$PORT"
 
-PORT="$(grep -E '^HMUSIC_PORT=' .env | tail -n1 | cut -d= -f2 | tr -d '[:space:]')"
-PORT="${PORT:-6650}"
-
-# ---------- 3. 端口占用检查 ----------
-port_busy() {
-  if command -v lsof >/dev/null 2>&1; then
-    lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
-  elif command -v ss >/dev/null 2>&1; then
-    ss -lnt "sport = :$1" 2>/dev/null | grep -q LISTEN
-  else
-    return 1   # 检测不了就当没占用，交给启动时报错
-  fi
-}
-if port_busy "$PORT"; then
-  warn "端口 $PORT 已被占用。若不是 HMusic 自己在跑，请改 .env 里的 HMUSIC_PORT 后重跑本脚本。"
-fi
-
-# ---------- 4. 安装并启动 ----------
+# ---------- 3. 安装并启动 ----------
 if [ "$MODE" = docker ]; then
   command -v docker >/dev/null || die "找不到 docker"
   docker compose version >/dev/null 2>&1 \
     || die "找不到 docker compose（v2）。老版 docker-compose 请升级 Docker。"
+  ensure_docker_data_identity
 
   say "拉取镜像并启动…"
   # 镜像若为 private 会在这里失败，给出可操作的提示而不是让用户看原始报错。
-  if ! docker compose pull 2>&1 | tee /tmp/hmusic-pull.log; then
-    if grep -qiE 'denied|unauthorized|not found' /tmp/hmusic-pull.log; then
+  PULL_LOG="${TMPDIR:-/tmp}/hmusic-pull.$$.log"
+  trap 'rm -f "$PULL_LOG"' EXIT
+  if ! docker compose pull 2>&1 | tee "$PULL_LOG"; then
+    if grep -qiE 'denied|unauthorized|not found' "$PULL_LOG"; then
       die "拉取镜像被拒绝：镜像仓库可能还是 private。
    维护者需到 GitHub Packages 把 hmusic-server 设为 Public，
    或先用原生方式安装：bash install.sh --native"
     fi
     die "拉取镜像失败，详见上方输出"
   fi
+  rm -f "$PULL_LOG"
+  trap - EXIT
+  if [ "$PREVIOUS_MODE" = native ]; then
+    say "正在停止旧的原生服务…"
+    if $systemd_native; then
+      systemctl disable --now hmusic-server
+    fi
+    stop_managed_native
+  fi
   docker compose up -d
-  ok "容器已启动"
+  say "等待容器通过健康检查…"
+  CONTAINER_ID="$(docker compose ps -q hmusic-server)"
+  [ -n "$CONTAINER_ID" ] || die "容器没有成功创建，请运行 docker compose logs 查看原因"
+  HEALTH=starting
+  ATTEMPT=1
+  while [ "$ATTEMPT" -le 60 ]; do
+    HEALTH="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER_ID" 2>/dev/null || true)"
+    [ "$HEALTH" = healthy ] && break
+    [ "$HEALTH" = exited ] && break
+    sleep 2
+    ATTEMPT=$((ATTEMPT + 1))
+  done
+  if [ "$HEALTH" != healthy ]; then
+    docker compose logs --tail=50 hmusic-server || true
+    die "容器未通过健康检查（状态：${HEALTH:-未知}）"
+  fi
+  record_deploy_mode docker
+  ok "容器已启动并通过健康检查"
   echo
   say "常用命令："
   echo "   查看日志:  docker compose logs -f"
   echo "   停止:      docker compose down"
-  echo "   升级:      docker compose pull && docker compose up -d"
+  echo "   升级:      bash install.sh --update"
 else
-  command -v node >/dev/null || die "未找到 Node.js。请先安装 Node.js 20 或更高版本：https://nodejs.org/"
+  if ! command -v node >/dev/null 2>&1; then
+    if $has_docker; then
+      die "上次使用原生 Node 部署，但当前找不到 Node.js。请重新安装 Node.js 20+，或执行 bash install.sh --docker 切换到 Docker。"
+    fi
+    if [ "$OS" = Linux ]; then
+      die "未找到可用的 Docker，也未安装 Node.js。NAS 推荐先在应用中心安装 Docker / Container Manager；若要原生安装，请先安装 Node.js 20+：https://nodejs.org/"
+    fi
+    die "未找到 Node.js。请先安装 Node.js 20 或更高版本：https://nodejs.org/"
+  fi
   NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
   [ "$NODE_MAJOR" -ge 20 ] || die "Node 版本过低（当前 $(node -v)），需要 20 或更高"
 
-  if [ ! -f dist/main.js ]; then
-    say "安装依赖并编译（首次较慢，请耐心等待）…"
-    npm ci
+  command -v npm >/dev/null || die "未找到 npm，请重新安装完整的 Node.js 20+"
+  if [ -f tsconfig.json ] && [ -d src ]; then
+    say "安装依赖并编译最新版（首次较慢，请耐心等待）…"
+    npm ci --no-audit --no-fund || explain_npm_install_failure
     npm run build
+  elif [ -f dist/main.js ]; then
+    say "检测到预编译部署包，正在安装生产依赖…"
+    npm ci --omit=dev --no-audit --no-fund || explain_npm_install_failure
   else
-    ok "已有编译产物 dist/，跳过构建"
+    die "既没有源码也没有 dist/main.js，安装文件不完整，请重新下载。"
   fi
 
-  # Linux 上有 systemd 就装成开机自启的服务；否则给前台启动命令。
+  if [ "$PREVIOUS_MODE" = docker ]; then
+    say "正在停止旧的 Docker 容器…"
+    docker compose down
+  fi
+
+  # Linux root 环境装成 systemd 服务；其它环境由安装器在后台管理。
   if [ "$OS" = Linux ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     if [ "$(id -u)" -eq 0 ]; then
       say "检测到 systemd，安装为开机自启服务…"
       bash scripts/install-systemd.sh
+      record_deploy_mode native
+      print_access_urls "$PORT"
       exit 0
     else
       warn "检测到 systemd。想要开机自启请运行：sudo bash scripts/install-systemd.sh"
@@ -145,28 +210,11 @@ else
     fi
   fi
 
-  ok "准备就绪"
-  echo
-  say "启动命令："
-  echo "   npm start          # 前台运行，关掉终端即停止"
+  start_native_background "$PORT"
+  record_deploy_mode native
+  echo "   日志: data/server.log"
+  echo "   停止: bash scripts/stop.sh"
 fi
 
-# ---------- 5. 打印访问地址 ----------
-lan_ip() {
-  if [ "$OS" = Darwin ]; then
-    ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true
-  else
-    # hostname -I 在部分发行版没有，退回 ip route 解析
-    hostname -I 2>/dev/null | awk '{print $1}' \
-      || ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}'
-  fi
-}
-IP="$(lan_ip)"
-echo
-ok "完成！用浏览器打开："
-if [ -n "${IP:-}" ]; then
-  echo "   http://${IP}:${PORT}/app/       ← 手机/其它设备用这个"
-fi
-echo "   http://127.0.0.1:${PORT}/app/   ← 本机用这个"
-echo
-echo "首次打开会让你创建管理员账号，然后在「设置 → 小米账号」里扫码登录。"
+# ---------- 4. 打印访问地址 ----------
+print_access_urls "$PORT"

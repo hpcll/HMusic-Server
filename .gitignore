@@ -7,6 +7,7 @@ data/
 .idea/
 .claude/
 hmusic-deploy.tar.gz
+hmusic-deploy.tar.gz.sha256
 
 # 内部开发文档，不公开
 docs/

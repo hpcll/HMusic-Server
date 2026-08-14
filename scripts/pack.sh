@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # 打一键部署包：编译后端 + 收齐前端与依赖清单，产出 hmusic-deploy.tar.gz。
 # 用法：在项目根执行  bash scripts/pack.sh
-# 产物拷到服务器解压后，按 scripts/deploy-run.sh 启动即可。
+# 产物拷到服务器解压后，执行 bash install.sh 即可自动选择 Docker/原生方式。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-OUT="hmusic-deploy.tar.gz"
+OUT="${HMUSIC_DEPLOY_OUT:-hmusic-deploy.tar.gz}"
+CHECKSUM_OUT="${OUT}.sha256"
 
 echo "[1/3] 安装依赖并编译后端…"
-npm ci
+npm ci --no-audit --no-fund
 npm run build
 
 echo "[2/3] 打包运行所需文件…"
@@ -24,8 +25,10 @@ for f in "${REQUIRED_VENDOR[@]}"; do
     exit 1
   fi
 done
-# dist=后端产物, web=前端(含 vendored Vue + qrcode), package*.json=服务器装依赖用
-tar -czf "$OUT" dist web package.json package-lock.json .env.example README.md scripts
+# 同一部署包同时支持 Docker 与原生安装；不包含 .env/data，覆盖升级不会碰用户状态。
+tar --exclude='.DS_Store' --exclude='*/.DS_Store' -czf "$OUT" \
+  dist web package.json package-lock.json .env.example README.md scripts \
+  bootstrap.sh install.sh docker-compose.yml
 
 echo "[2.5/3] 校验产物内已包含前端运行时库…"
 for f in "${REQUIRED_VENDOR[@]}"; do
@@ -35,7 +38,30 @@ for f in "${REQUIRED_VENDOR[@]}"; do
     exit 1
   fi
 done
+for f in bootstrap.sh install.sh docker-compose.yml scripts/deploy-common.sh scripts/stop.sh; do
+  if ! tar tzf "$OUT" | grep -qx "$f"; then
+    echo "❌ 产物 $OUT 内缺少 $f —— 打包失败。" >&2
+    rm -f "$OUT"
+    exit 1
+  fi
+done
+if tar tzf "$OUT" | grep -qE '(^|/)\.DS_Store$'; then
+  echo "❌ 产物 $OUT 含有 .DS_Store，打包失败。" >&2
+  rm -f "$OUT" "$CHECKSUM_OUT"
+  exit 1
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  PACKAGE_SHA256="$(sha256sum "$OUT" | awk '{print $1}')"
+elif command -v shasum >/dev/null 2>&1; then
+  PACKAGE_SHA256="$(shasum -a 256 "$OUT" | awk '{print $1}')"
+else
+  echo "❌ 缺少 sha256sum/shasum，无法生成部署包校验文件。" >&2
+  exit 1
+fi
+printf '%s  %s\n' "$PACKAGE_SHA256" "$(basename "$OUT")" > "$CHECKSUM_OUT"
 
 echo "[3/3] 完成：$OUT ($(du -h "$OUT" | cut -f1))"
+echo "       校验：$CHECKSUM_OUT"
 echo
-echo "下一步：把 $OUT 拷到服务器，解压后执行 bash scripts/deploy-run.sh"
+echo "下一步：把 $OUT 拷到服务器，解压后执行 bash install.sh"

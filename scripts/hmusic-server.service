@@ -16,6 +16,9 @@ Documentation=https://github.com/hpcll/HMusic-Server
 # 需要网络就绪：服务启动时要探测局域网 IPv4 并广播 mDNS。
 After=network-online.target
 Wants=network-online.target
+# 限制连续启动失败的频率，避免反复重启刷日志。
+StartLimitIntervalSec=60s
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -35,8 +38,6 @@ ExecStart=/usr/bin/node dist/main.js
 # 异常退出后自动重启，但限制频率避免疯狂重启刷日志。
 Restart=on-failure
 RestartSec=5s
-StartLimitInterval=60s
-StartLimitBurst=3
 
 # 日志走 journald，用 journalctl -u hmusic-server 查看。
 StandardOutput=journal
@@ -48,7 +49,8 @@ SyslogIdentifier=hmusic-server
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
+# 项目允许放在安装用户的家目录；ProtectSystem + ReadWritePaths 负责限制写入范围。
+ProtectHome=false
 # data/ 是唯一需要写的地方（SQLite 库 + 下载的音乐 + LX 插件）。
 ReadWritePaths=/opt/hmusic-server/data
 ProtectKernelTunables=true
