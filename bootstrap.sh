@@ -46,13 +46,13 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   command -v git >/dev/null 2>&1 || die "已有安装来自 Git，但当前找不到 git 命令。"
   say "检测到已有 Git 安装，正在安全升级…"
   cd "$INSTALL_DIR"
-  [ -z "$(git status --porcelain)" ] \
+  [ -z "$(git -c core.fileMode=false status --porcelain)" ] \
     || die "程序目录存在本地修改，为避免覆盖已停止升级：$INSTALL_DIR"
   BRANCH="$(git symbolic-ref --quiet --short HEAD || true)"
   [ -n "$BRANCH" ] || die "程序目录处于 detached HEAD，请先切回 main 分支。"
   UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
   [ -n "$UPSTREAM" ] || die "分支 ${BRANCH} 没有关联远端分支，无法自动升级。"
-  git pull --ff-only
+  git -c core.fileMode=false pull --ff-only
   run_installer "$@"
   exit 0
 fi

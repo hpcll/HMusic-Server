@@ -113,6 +113,7 @@ git -C "$GIT_TEST_DIR/seed" commit -m v1 >/dev/null
 git -C "$GIT_TEST_DIR/seed" remote add origin "$GIT_TEST_DIR/remote.git"
 git -C "$GIT_TEST_DIR/seed" push -u origin main >/dev/null
 git clone "$GIT_TEST_DIR/remote.git" "$GIT_TEST_DIR/clone" >/dev/null 2>&1
+chmod +x "$GIT_TEST_DIR/clone/install.sh"
 printf 'v2\n' > "$GIT_TEST_DIR/seed/version.txt"
 git -C "$GIT_TEST_DIR/seed" commit -am v2 >/dev/null
 git -C "$GIT_TEST_DIR/seed" push >/dev/null

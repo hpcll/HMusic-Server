@@ -273,7 +273,7 @@ update_checkout() {
   local branch upstream
   command -v git >/dev/null 2>&1 || die "自动升级需要 Git。请先安装 Git，或下载新版部署包覆盖程序文件。"
   [ -d .git ] || die "当前不是 Git 克隆目录，无法自动拉取。部署包用户请下载新版部署包，保留 .env 和 data/ 后覆盖程序文件。"
-  [ -z "$(git status --porcelain)" ] \
+  [ -z "$(git -c core.fileMode=false status --porcelain)" ] \
     || die "检测到程序文件有本地修改，为避免覆盖已停止升级。请先保存或还原这些修改。"
   branch="$(git symbolic-ref --quiet --short HEAD || true)"
   [ -n "$branch" ] || die "当前 Git 处于 detached HEAD，无法自动升级。请切回 main 分支后重试。"
@@ -282,6 +282,6 @@ update_checkout() {
     || die "当前分支 ${branch} 没有关联远端分支。请先执行 git branch --set-upstream-to=origin/${branch}，再重试。"
 
   say "正在从 ${upstream} 拉取最新版…"
-  git pull --ff-only
+  git -c core.fileMode=false pull --ff-only
   ok "代码已更新"
 }
