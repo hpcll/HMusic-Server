@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../shared/auth.js";
 import { resolvePublicBaseUrl } from "../../shared/public-base-url.js";
 import { createTestToneWav, testTonePath } from "../../shared/test-tone.js";
-import { serverVersion } from "../../shared/version.js";
+import { serverVersion, minSupportedAppVersion } from "../../shared/version.js";
 import {
   checkForUpdate,
   clearUpdateLockOnBoot,
@@ -19,6 +19,8 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
     name: "HMusic Server",
     version: serverVersion,
     apiVersion: "v1",
+    // 老 App 准入门槛（0.0.0 = 不强制）；App 端低于此版本进全屏升级页。
+    minAppVersion: minSupportedAppVersion,
     mode: "development",
     // 返回实时生效值（回环/失效 IPv4 已替换），设置页看到的即音箱实际拿到的。
     publicBaseUrl: resolvePublicBaseUrl(),

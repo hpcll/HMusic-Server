@@ -70,6 +70,8 @@ describe("api contract", () => {
       });
       expect(info.statusCode).toBe(200);
       expect(info.json().capabilities.playback).toBe(true);
+      // 老 App 准入门槛恒有值（默认 0.0.0 = 不强制），App 端据此做强制升级门。
+      expect(info.json().minAppVersion).toBe("0.0.0");
 
       const testTone = await app.inject({
         method: "GET",

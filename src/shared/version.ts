@@ -29,3 +29,8 @@ function resolveVersion(): string {
 }
 
 export const serverVersion = resolveVersion();
+
+// 本服务端要求的最低 App 版本：随 /system/info 下发，老 App 连上后自行进
+// 全屏「必须升级」页。仅在发布不兼容旧 App 的大改动时抬高（如 API v2）；
+// 平时保持 0.0.0 即「不强制」。
+export const minSupportedAppVersion = "0.0.0";
