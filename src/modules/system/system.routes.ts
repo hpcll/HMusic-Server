@@ -1,13 +1,23 @@
 import type { FastifyInstance } from "fastify";
+import { requireAuth } from "../../shared/auth.js";
 import { resolvePublicBaseUrl } from "../../shared/public-base-url.js";
 import { createTestToneWav, testTonePath } from "../../shared/test-tone.js";
+import { serverVersion } from "../../shared/version.js";
+import {
+  checkForUpdate,
+  clearUpdateLockOnBoot,
+  readUpdateLog,
+  triggerSelfUpdate,
+} from "./update.service.js";
 
 const testToneWav = createTestToneWav();
 
 export async function systemRoutes(app: FastifyInstance): Promise<void> {
+  clearUpdateLockOnBoot();
+
   app.get("/info", async () => ({
     name: "HMusic Server",
-    version: "0.1.0",
+    version: serverVersion,
     apiVersion: "v1",
     mode: "development",
     // 返回实时生效值（回环/失效 IPv4 已替换），设置页看到的即音箱实际拿到的。
@@ -25,6 +35,15 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
       proxy: true,
     },
   }));
+
+  // 升级三件套走独立鉴权子域：/info 与测试音保持公开（发现/探测要用），
+  // 升级检查与触发只许登录用户。
+  await app.register(async (scoped) => {
+    requireAuth(scoped);
+    scoped.get("/update", async () => checkForUpdate());
+    scoped.post("/update", async () => triggerSelfUpdate());
+    scoped.get("/update/log", async () => readUpdateLog());
+  });
 
   app.get(
     testTonePath.replace("/api/v1/system", ""),

@@ -41,6 +41,13 @@ ensure_env() {
   elif [ "${#secret}" -lt 8 ]; then
     die "HMUSIC_JWT_SECRET 至少需要 8 个字符，请修改 .env 后重试。"
   fi
+
+  # App 一键升级令牌：Docker 部署下服务端凭它调 hmusic-updater 触发换镜像。
+  # 两种模式都补齐（native 不用但无害），老 .env 升级上来也能自动获得。
+  if [ -z "$(env_value HMUSIC_UPDATE_TOKEN | tr -d '[:space:]')" ]; then
+    set_env_value HMUSIC_UPDATE_TOKEN "$(gen_secret)"
+    ok "已生成一键升级令牌"
+  fi
   chmod 600 .env 2>/dev/null || true
 }
 
@@ -86,10 +93,16 @@ sync_loopback_public_base_port() {
 }
 
 ensure_docker_data_identity() {
-  local uid gid
+  local ownership uid gid
   mkdir -p data
-  uid="$(stat -c '%u' data 2>/dev/null || stat -f '%u' data 2>/dev/null || true)"
-  gid="$(stat -c '%g' data 2>/dev/null || stat -f '%g' data 2>/dev/null || true)"
+  ownership="$(stat -c '%u:%g' data 2>/dev/null || stat -f '%u:%g' data 2>/dev/null || true)"
+  case "$ownership" in
+    ''|*[!0-9:]*|:*|*:|*:*:*)
+      ownership="$(LC_ALL=C ls -nd data 2>/dev/null | awk '{print $3 ":" $4}' || true)"
+      ;;
+  esac
+  uid="${ownership%%:*}"
+  gid="${ownership#*:}"
   case "$uid:$gid" in
     *[!0-9:]*|:*|*:) die "无法读取 data/ 的 UID/GID，请检查目录权限" ;;
   esac

@@ -25,6 +25,10 @@ services:
     # install.sh 会自动填写；手动 compose 未填写时用 root 兼容各类 NAS 权限模型。
     user: "${HMUSIC_DOCKER_UID:-0}:${HMUSIC_DOCKER_GID:-0}"
 
+    # 一键升级守护（hmusic-updater）只认这个 scope 标签，不碰宿主机其它容器。
+    labels:
+      - com.centurylinklabs.watchtower.scope=hmusic
+
     # 宿主机网络：mDNS 广播 + 真实局域网 IPv4 探测的前提。
     # 端口不再做 -p 映射，服务直接监听宿主机 6650（改端口用下方 HMUSIC_PORT）。
     network_mode: host
@@ -35,6 +39,8 @@ services:
       HMUSIC_JWT_SECRET: ${HMUSIC_JWT_SECRET:?缺少 HMUSIC_JWT_SECRET。请先运行 bash install.sh 自动生成，或手动 cp .env.example .env 并填写}
       HMUSIC_PORT: ${HMUSIC_PORT:-6650}
       HMUSIC_LOG_LEVEL: ${HMUSIC_LOG_LEVEL:-info}
+      # App 一键升级：服务端拿这个令牌调 hmusic-updater 的 HTTP API 触发换新镜像。
+      HMUSIC_UPDATE_TOKEN: ${HMUSIC_UPDATE_TOKEN:-}
       # 局域网 IPv4 会自动探测，通常留默认即可；仅反代/公网域名时才显式填写。
       # 换端口时这里的端口要与 HMUSIC_PORT 一致。
       HMUSIC_PUBLIC_BASE_URL: ${HMUSIC_PUBLIC_BASE_URL:-http://127.0.0.1:6650}
@@ -59,3 +65,20 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # 一键升级守护：App 点「立即升级」→ 服务端带令牌调本容器的 HTTP API →
+  # 拉取 ghcr 新镜像并原地重建 hmusic-server（数据在 ./data 卷里，不受影响）。
+  # 只响应显式触发（无定时轮询），且 scope 限定只动带 hmusic 标签的容器。
+  # docker.sock 交给 watchtower（社区标准更新器）而非业务容器，权限面最小。
+  hmusic-updater:
+    image: containrrr/watchtower:latest
+    container_name: hmusic-updater
+    restart: unless-stopped
+    network_mode: host
+    labels:
+      - com.centurylinklabs.watchtower.scope=hmusic
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_HTTP_API_TOKEN: ${HMUSIC_UPDATE_TOKEN:?缺少 HMUSIC_UPDATE_TOKEN。请运行 bash install.sh 自动生成}
+    command: --http-api-update --http-api-port 8666 --scope hmusic --cleanup

@@ -96,6 +96,17 @@ describe("api contract", () => {
       });
       expect(unauthorized.statusCode).toBe(401);
 
+      // 升级检查/触发是敏感操作：/system/info 公开，但 /system/update 必须登录。
+      const updateCheckUnauthorized = await app.inject({
+        method: "GET",
+        url: "/api/v1/system/update",
+      });
+      expect(updateCheckUnauthorized.statusCode).toBe(401);
+      const updateTriggerUnauthorized = await app.inject({
+        method: "POST",
+        url: "/api/v1/system/update",
+      });
+      expect(updateTriggerUnauthorized.statusCode).toBe(401);
 
       const setup = await app.inject({
         method: "POST",

@@ -33,6 +33,8 @@ RUN npm prune --omit=dev
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# 容器内禁用一键自升级（升级=拉新镜像重建容器），/system/update 据此判定。
+ENV HMUSIC_IN_DOCKER=1
 
 # node:*-slim 自带非 root 的 node 用户（uid/gid 1000）。
 # 数据目录预建好并归属 node，避免挂载后容器内无写权限。
