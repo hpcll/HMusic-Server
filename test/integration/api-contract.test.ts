@@ -96,6 +96,7 @@ describe("api contract", () => {
       });
       expect(unauthorized.statusCode).toBe(401);
 
+
       const setup = await app.inject({
         method: "POST",
         url: "/api/v1/auth/setup",
@@ -910,7 +911,8 @@ describe("api contract", () => {
         headers,
       });
       expect(devicesAfterMiLogin.statusCode).toBe(200);
-      // 小米设备之外恒有「本机播放」虚拟设备；登录同步会把首台音箱设为默认。
+      // 小米设备之外恒有「本机播放」虚拟设备；登录同步只补设备清单，
+      // 不抢默认位——用户正用着的默认设备（本机播放）保持不变。
       const devicesWithMi = devicesAfterMiLogin.json().devices;
       expect(devicesWithMi).toHaveLength(2);
       expect(devicesWithMi).toEqual(
@@ -921,14 +923,23 @@ describe("api contract", () => {
             type: "L06A",
             ip: "192.168.1.20",
             isOnline: true,
-            isDefault: true,
+            isDefault: false,
           }),
           expect.objectContaining({
             id: "local-browser",
-            isDefault: false,
+            isDefault: true,
           }),
         ]),
       );
+
+      // 显式切到音箱（模拟用户选择）：后续测试音/兼容层都以音箱为默认设备。
+      const selectSpeaker = await app.inject({
+        method: "POST",
+        url: "/api/v1/devices/xiaomi-speaker/select",
+        headers,
+      });
+      expect(selectSpeaker.statusCode).toBe(200);
+      expect(selectSpeaker.json().selectedDeviceId).toBe("xiaomi-speaker");
 
       const refreshDevices = await app.inject({
         method: "POST",

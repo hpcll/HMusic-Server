@@ -9,7 +9,7 @@ import {
 import { AppError } from "../../shared/errors.js";
 import { decryptSecret, encryptSecret } from "../../shared/secrets.js";
 import { kvGet, kvSet } from "../../db/kv.js";
-import { upsertDevice } from "../devices/devices.service.js";
+import { listDevices, upsertDevice } from "../devices/devices.service.js";
 import {
   completeXiaomiIdentityChallenge,
   createXiaomiSessionFromWebCredentials,
@@ -790,6 +790,12 @@ async function saveDevices(devices: XiaomiDevice[]): Promise<void> {
     didMap[device.deviceId] = device.did;
   }
   kvSet("mi.miotDids", didMap);
+  // 不抢默认位：登录/刷新只是同步设备清单，用户正用着的默认设备（比如
+  // 「本机播放」）不能被顶掉。仅当库里还没有任何默认（listDevices 会先
+  // 确保本机虚拟设备存在）时，才把第一台小米设备设为默认。
+  const currentDefaultId = (await listDevices()).find(
+    (device) => device.isDefault,
+  )?.id;
   for (const [index, device] of devices.entries()) {
     await upsertDevice({
       id: device.deviceId,
@@ -797,7 +803,9 @@ async function saveDevices(devices: XiaomiDevice[]): Promise<void> {
       type: device.hardware,
       ip: device.ip,
       isOnline: true,
-      isDefault: index === 0,
+      isDefault: currentDefaultId
+        ? device.deviceId === currentDefaultId
+        : index === 0,
       capabilities: inferCapabilities(device.hardware),
     });
   }
