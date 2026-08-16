@@ -88,6 +88,11 @@ EXPECTED_UID="$(stat -c '%u' data 2>/dev/null || stat -f '%u' data)"
 EXPECTED_GID="$(stat -c '%g' data 2>/dev/null || stat -f '%g' data)"
 [ "$(env_value HMUSIC_DOCKER_UID)" = "$EXPECTED_UID" ]
 [ "$(env_value HMUSIC_DOCKER_GID)" = "$EXPECTED_GID" ]
+stat() { return 127; }
+ensure_docker_data_identity >/dev/null
+unset -f stat
+[ "$(env_value HMUSIC_DOCKER_UID)" = "$EXPECTED_UID" ]
+[ "$(env_value HMUSIC_DOCKER_GID)" = "$EXPECTED_GID" ]
 [ "$(env_value HMUSIC_JWT_SECRET)" != change-me ]
 record_deploy_mode docker
 [ "$(read_deploy_mode)" = docker ]
