@@ -7,6 +7,7 @@ import {
   checkForUpdate,
   clearUpdateLockOnBoot,
   readUpdateLog,
+  relayAppConfig,
   triggerSelfUpdate,
 } from "./update.service.js";
 
@@ -37,6 +38,10 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
       proxy: true,
     },
   }));
+
+  // App 远程配置中转（公开：强升门在登录前就要判）。NAS 网络通常比手机
+  // 直连 GitHub 稳，App 优先走这里，拿不到再退自身直连镜像。
+  app.get("/app-config", async () => relayAppConfig());
 
   // 升级三件套走独立鉴权子域：/info 与测试音保持公开（发现/探测要用），
   // 升级检查与触发只许登录用户。

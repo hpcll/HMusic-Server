@@ -73,6 +73,30 @@ describe("api contract", () => {
       // 老 App 准入门槛恒有值（默认 0.0.0 = 不强制），App 端据此做强制升级门。
       expect(info.json().minAppVersion).toBe("0.0.0");
 
+      // App 远程配置中转公开可达，恒 200；shape 固定 {available, config}。
+      // 注入假 fetch 免真打 GitHub（离线 CI 确定性 + 不吃镜像超时）。
+      const updateSvc = await import(
+        "../../src/modules/system/update.service.js"
+      );
+      updateSvc._setFetchForTests((async () =>
+        new Response(JSON.stringify({ minVersion: "0.0.0", notice: "" }), {
+          status: 200,
+        })) as typeof fetch);
+      try {
+        const appConfig = await app.inject({
+          method: "GET",
+          url: "/api/v1/system/app-config",
+        });
+        expect(appConfig.statusCode).toBe(200);
+        expect(appConfig.json()).toEqual({
+          available: true,
+          config: { minVersion: "0.0.0", notice: "" },
+        });
+      } finally {
+        updateSvc._setFetchForTests(undefined);
+        updateSvc._resetUpdateStateForTests();
+      }
+
       const testTone = await app.inject({
         method: "GET",
         url: "/api/v1/system/test-tone.wav",

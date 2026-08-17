@@ -340,6 +340,67 @@ export function readUpdateLog(): { updating: boolean; log: string } {
   return { updating: isUpdating(), log };
 }
 
+// ===== App 远程配置中转 =====
+// 手机直连 GitHub 在大陆常态不通，由服务端代拉 App 仓库的 app-config.json
+// （强制升级/公告的全局开关）。30min 缓存 + 拉挂时回上次旧值：门控宁可
+// 用旧配置也不因网络抖动放空。available=false 时 App 退回自身直连镜像。
+const appConfigRepo = process.env.HMUSIC_APP_CONFIG_REPO ?? "hpcll/HMusic-App";
+const appConfigMirrors: string[] = process.env.HMUSIC_APP_CONFIG_URL
+  ? [process.env.HMUSIC_APP_CONFIG_URL]
+  : [
+      `https://raw.githubusercontent.com/${appConfigRepo}/main/app-config.json`,
+      `https://fastly.jsdelivr.net/gh/${appConfigRepo}@main/app-config.json`,
+    ];
+
+const appConfigTtlMs = 30 * 60 * 1000;
+
+type AppRemoteConfig = {
+  minVersion?: string;
+  notice?: string;
+  downloadUrl?: string;
+};
+
+let cachedAppConfig:
+  | { fetchedAt: number; config: AppRemoteConfig }
+  | undefined;
+
+export type AppConfigRelay = {
+  available: boolean;
+  config: AppRemoteConfig | null;
+};
+
+export async function relayAppConfig(): Promise<AppConfigRelay> {
+  if (cachedAppConfig && Date.now() - cachedAppConfig.fetchedAt < appConfigTtlMs) {
+    return { available: true, config: cachedAppConfig.config };
+  }
+  for (const url of appConfigMirrors) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetchImpl(url, {
+          signal: controller.signal,
+          headers: { "user-agent": `hmusic-server/${serverVersion}` },
+        });
+        if (!response.ok) continue;
+        const body = (await response.json()) as AppRemoteConfig;
+        if (typeof body !== "object" || body === null) continue;
+        cachedAppConfig = { fetchedAt: Date.now(), config: body };
+        return { available: true, config: body };
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch {
+      // 换下一个镜像。
+    }
+  }
+  // 全部镜像失败：有旧值用旧值（过期缓存也比放空强），否则如实报不可用。
+  if (cachedAppConfig) {
+    return { available: true, config: cachedAppConfig.config };
+  }
+  return { available: false, config: null };
+}
+
 // ===== 测试注入 =====
 export function _setFetchForTests(impl: FetchLike | undefined): void {
   fetchImpl = impl ?? fetch;
@@ -357,6 +418,7 @@ export function _setSpawnForTests(impl: SpawnLike | undefined): void {
 
 export function _resetUpdateStateForTests(): void {
   cachedCheck = undefined;
+  cachedAppConfig = undefined;
   try {
     fs.rmSync(updateLockFile());
   } catch {

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // env 是模块级单例（导入即读 process.env），必须先设好临时数据目录再动态
 // 导入被测模块——与集成测试同一手法。
@@ -193,5 +193,53 @@ describe("update service", () => {
     const result = await svc.triggerSelfUpdate();
     expect(result.started).toBe(true);
     expect(spawned).toHaveLength(1);
+  });
+
+  it("relayAppConfig：镜像成功即缓存，二次调用不再打网络", async () => {
+    let calls = 0;
+    svc._setFetchForTests((async () => {
+      calls += 1;
+      return new Response(
+        JSON.stringify({ minVersion: "9.9.9", notice: "升级公告" }),
+        { status: 200 },
+      );
+    }) as typeof fetch);
+    const first = await svc.relayAppConfig();
+    expect(first.available).toBe(true);
+    expect(first.config?.minVersion).toBe("9.9.9");
+    const second = await svc.relayAppConfig();
+    expect(second.config?.notice).toBe("升级公告");
+    expect(calls).toBe(1);
+  });
+
+  it("relayAppConfig：全镜像失败且无缓存时如实报不可用", async () => {
+    svc._setFetchForTests((async () => {
+      throw new Error("network down");
+    }) as typeof fetch);
+    const result = await svc.relayAppConfig();
+    expect(result.available).toBe(false);
+    expect(result.config).toBeNull();
+  });
+
+  it("relayAppConfig：缓存过期且拉挂时回上次旧值顶着", async () => {
+    let fail = false;
+    svc._setFetchForTests((async () => {
+      if (fail) throw new Error("network down");
+      return new Response(JSON.stringify({ minVersion: "1.2.3" }), {
+        status: 200,
+      });
+    }) as typeof fetch);
+    vi.useFakeTimers();
+    try {
+      await svc.relayAppConfig();
+      // 拨过 30min TTL，再全网挂掉：应回过期缓存而非报不可用。
+      vi.setSystemTime(Date.now() + 31 * 60 * 1000);
+      fail = true;
+      const stale = await svc.relayAppConfig();
+      expect(stale.available).toBe(true);
+      expect(stale.config?.minVersion).toBe("1.2.3");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
