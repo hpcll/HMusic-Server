@@ -30,11 +30,12 @@ function resolveVersion(): string {
 
 export const serverVersion = resolveVersion();
 
-// 本服务端要求的最低 App 版本：随 /system/info 下发（老 App 自行进全屏
-// 「必须升级」页），并由 app-version-guard 在请求层强制（改掉客户端自觉判定
-// 也拿不到业务数据）。发布不兼容旧 App 的大改动时抬高这里（如 API v2）；
-// 平时保持 0.0.0 即「不强制」。也可用 HMUSIC_MIN_APP_VERSION 环境变量临时覆盖
-//（不改代码就能救急，例如某个 App 版本被发现会写坏数据）。
+// 本服务端要求的最低 App 版本：随 /system/info 下发（老 App 据此进全屏
+// 「必须升级」页），并由 app-version-guard 在请求层兜底拒绝。
+// 用途是部署侧的运维保护——挡住有已知数据损坏 bug 的 App 版本、统一多客户端
+// 版本、给不兼容的 API 改动一个明确提示，而不是平台对用户的管控（服务端本就
+// 归部署者所有）。发布不兼容旧 App 的大改动时抬高这里；平时 0.0.0 即「不限制」。
+// 也可用 HMUSIC_MIN_APP_VERSION 环境变量覆盖，部署者不改代码就能救急。
 const minSupportedAppVersionDefault = "0.0.0";
 
 export function minAppVersion(): string {
