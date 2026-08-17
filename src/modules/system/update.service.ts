@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "../../config/env.js";
 import { AppError } from "../../shared/errors.js";
-import { serverVersion } from "../../shared/version.js";
+import { isNewerVersion, serverVersion } from "../../shared/version.js";
 
 // 升级链路的「上半段」：检测 GitHub Release 新版 + 一键触发 install.sh --update。
 // 下半段（下载部署包、保留 .env/data、停旧进程、重启）全部复用现有安装脚本，
@@ -118,24 +118,9 @@ const updaterUrl = () =>
   process.env.HMUSIC_UPDATER_URL ?? "http://127.0.0.1:8666";
 const updateToken = () => (process.env.HMUSIC_UPDATE_TOKEN ?? "").trim();
 
-// 数字段逐段比较（v 前缀无视），段数不齐补 0；非数字段按 0 处理
-//（本项目版本号是纯 x.y.z，预发布后缀不参与排序）。
-export function isNewerVersion(latest: string, current: string): boolean {
-  const parse = (value: string) =>
-    value
-      .replace(/^v/i, "")
-      .split(".")
-      .map((part) => Number.parseInt(part, 10) || 0);
-  const a = parse(latest);
-  const b = parse(current);
-  const length = Math.max(a.length, b.length);
-  for (let i = 0; i < length; i += 1) {
-    const x = a[i] ?? 0;
-    const y = b[i] ?? 0;
-    if (x !== y) return x > y;
-  }
-  return false;
-}
+// 数字段逐段比较（v 前缀无视）：实现在 shared/version.ts（请求层门禁同用），
+// 这里 re-export 保持既有调用点不变。
+export { isNewerVersion };
 
 async function fetchLatestRelease(): Promise<LatestRelease> {
   if (cachedCheck && Date.now() - cachedCheck.fetchedAt < checkCacheTtlMs) {

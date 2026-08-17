@@ -22,6 +22,7 @@ import { sourcesRoutes } from "./modules/sources/sources.routes.js";
 import { statsRoutes } from "./modules/stats/stats.routes.js";
 import { systemRoutes } from "./modules/system/system.routes.js";
 import { webRoutes } from "./modules/web/web.routes.js";
+import { enforceMinAppVersion } from "./shared/app-version-guard.js";
 import { registerErrorHandler } from "./shared/errors.js";
 
 export async function buildApp() {
@@ -48,6 +49,10 @@ export async function buildApp() {
   });
 
   registerErrorHandler(app);
+
+  // 老 App 请求层门禁（在所有路由之前）：自报版本低于 minSupportedAppVersion
+  // 的官方 App 一律 403，强升页要用的公开接口豁免。
+  enforceMinAppVersion(app);
 
   await app.register(miPublicRoutes);
   await app.register(webRoutes);
