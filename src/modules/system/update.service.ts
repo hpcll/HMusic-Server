@@ -345,11 +345,14 @@ export function readUpdateLog(): { updating: boolean; log: string } {
 // （强制升级/公告的全局开关）。30min 缓存 + 拉挂时回上次旧值：门控宁可
 // 用旧配置也不因网络抖动放空。available=false 时 App 退回自身直连镜像。
 const appConfigRepo = process.env.HMUSIC_APP_CONFIG_REPO ?? "hpcll/HMusic-App";
+// Gitee 镜像与 GitHub 的用户名不同（hpc1997），单独可配。
+const appConfigGiteeRepo =
+  process.env.HMUSIC_APP_CONFIG_GITEE_REPO ?? "hpc1997/HMusic-App";
 const appConfigMirrors: string[] = process.env.HMUSIC_APP_CONFIG_URL
   ? [process.env.HMUSIC_APP_CONFIG_URL]
   : [
-      // Gitee 国内主源（大陆 NAS 免翻墙；镜像仓库建好后生效，未建时 404 秒过）。
-      `https://gitee.com/${appConfigRepo}/raw/main/app-config.json`,
+      // Gitee 国内主源（大陆 NAS 免翻墙；镜像仓库公开后生效，未公开时秒过）。
+      `https://gitee.com/${appConfigGiteeRepo}/raw/main/app-config.json`,
       `https://raw.githubusercontent.com/${appConfigRepo}/main/app-config.json`,
       `https://fastly.jsdelivr.net/gh/${appConfigRepo}@main/app-config.json`,
     ];
