@@ -348,6 +348,8 @@ const appConfigRepo = process.env.HMUSIC_APP_CONFIG_REPO ?? "hpcll/HMusic-App";
 const appConfigMirrors: string[] = process.env.HMUSIC_APP_CONFIG_URL
   ? [process.env.HMUSIC_APP_CONFIG_URL]
   : [
+      // Gitee 国内主源（大陆 NAS 免翻墙；镜像仓库建好后生效，未建时 404 秒过）。
+      `https://gitee.com/${appConfigRepo}/raw/main/app-config.json`,
       `https://raw.githubusercontent.com/${appConfigRepo}/main/app-config.json`,
       `https://fastly.jsdelivr.net/gh/${appConfigRepo}@main/app-config.json`,
     ];
