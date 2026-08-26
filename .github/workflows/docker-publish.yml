@@ -6,6 +6,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "可选：发布版本 tag，例如 v0.2.0；留空时仅验证源码"
+        required: false
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -38,7 +43,9 @@ jobs:
           npm run build
 
   build-and-push:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -90,7 +97,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ inputs.release_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' }}
+            type=raw,value=latest,enable=${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') }}
             type=ref,event=tag
 
       - name: Build and push (amd64 + arm64)
@@ -106,7 +114,9 @@ jobs:
           cache-to: type=gha,mode=max
 
   publish-deployment-package:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: build-and-push
     runs-on: ubuntu-latest
     permissions:
@@ -125,8 +135,9 @@ jobs:
       - name: Build deployment package
         run: |
           PACKAGE_VERSION="$(node -p \"require('./package.json').version\")"
-          if [ "v${PACKAGE_VERSION}" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME 与 package.json 版本 v${PACKAGE_VERSION} 不一致" >&2
+          RELEASE_TAG="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
+          if [ "v${PACKAGE_VERSION}" != "$RELEASE_TAG" ]; then
+            echo "Tag $RELEASE_TAG 与 package.json 版本 v${PACKAGE_VERSION} 不一致" >&2
             exit 1
           fi
           bash scripts/pack.sh
@@ -135,9 +146,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" hmusic-deploy.tar.gz hmusic-deploy.tar.gz.sha256 --clobber
+          RELEASE_TAG="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" hmusic-deploy.tar.gz hmusic-deploy.tar.gz.sha256 --clobber
           else
-            gh release create "$GITHUB_REF_NAME" hmusic-deploy.tar.gz hmusic-deploy.tar.gz.sha256 \
-              --generate-notes --title "$GITHUB_REF_NAME"
+            gh release create "$RELEASE_TAG" hmusic-deploy.tar.gz hmusic-deploy.tar.gz.sha256 \
+              --generate-notes --title "$RELEASE_TAG"
           fi
