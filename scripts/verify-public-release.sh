@@ -14,12 +14,32 @@ node <<'NODE'
 const repo = process.env.HMUSIC_VERIFY_REPO;
 const image = process.env.HMUSIC_VERIFY_IMAGE.toLowerCase();
 const headers = { "user-agent": "hmusic-public-release-verifier" };
-const requestTimeout = () => AbortSignal.timeout(15_000);
+const requestTimeout = () => AbortSignal.timeout(30_000);
+const maxAttempts = 3;
 const failures = [];
+
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function request(url, options = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(url, { ...options, signal: requestTimeout() });
+      if (response.status < 500 || attempt === maxAttempts) return response;
+      lastError = new Error(`HTTP ${response.status}`);
+      await response.body?.cancel();
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) throw error;
+    }
+    await sleep(attempt * 1_000);
+  }
+  throw lastError;
+}
 
 async function expectOk(name, url, inspect) {
   try {
-    const response = await fetch(url, { headers, signal: requestTimeout() });
+    const response = await request(url, { headers });
     if (!response.ok) {
       failures.push(`${name}: HTTP ${response.status}`);
       return;
@@ -64,16 +84,16 @@ await expectOk(
 );
 
 try {
-  const tokenResponse = await fetch(
+  const tokenResponse = await request(
     `https://ghcr.io/token?scope=repository:${image}:pull`,
-    { headers, signal: requestTimeout() },
+    { headers },
   );
   if (!tokenResponse.ok) {
     failures.push(`GHCR 匿名令牌: HTTP ${tokenResponse.status}`);
   } else {
     const tokenBody = await tokenResponse.json();
     const token = tokenBody.token || tokenBody.access_token;
-    const manifestResponse = await fetch(
+    const manifestResponse = await request(
       `https://ghcr.io/v2/${image}/manifests/latest`,
       {
         headers: {
@@ -85,7 +105,6 @@ try {
             "application/vnd.oci.image.manifest.v1+json",
           ].join(", "),
         },
-        signal: requestTimeout(),
       },
     );
     if (!manifestResponse.ok) {
