@@ -27,8 +27,9 @@
 
 ## 发布
 
-推送与 `package.json` 版本一致的 `v*` tag。只有 tag push 会构建并发布镜像、创建部署包
-Release；手动运行 Actions 只用于源码校验，不会发布镜像或 Release。
+推荐推送与 `package.json` 版本一致的 `v*` tag。推送 tag 会构建并发布镜像、创建部署包
+Release。也可以在 Actions 页面手动运行：`release_tag` 留空时只做源码校验；填写与
+`package.json` 一致的 `vX.Y.Z` 时，会发布当前选定分支的镜像和 Release，使用前确认分支内容就是要发布的版本。
 
 ```bash
 git tag vX.Y.Z

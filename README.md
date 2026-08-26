@@ -114,7 +114,10 @@ HMUSIC_PUBLIC_BASE_URL=https://music.example.com
 
 ### 小爱音箱型号适配
 
-小爱音箱播放和 TTS 兼容逻辑参考了 [xiaomusic](https://github.com/hanxi/xiaomusic) 的公开实现，
+由于可用于测试的小爱音箱型号有限，HMusic 的部分兼容逻辑参考了
+[xiaomusic](https://github.com/hanxi/xiaomusic) 与
+[SongLoft MIoT 插件](https://github.com/songloft-org/songloft-plugin-miot) 的公开实现，
+并结合 HMusic 自身架构进行了重新实现。不同型号的实际表现可能存在差异，欢迎反馈测试结果；
 具体致谢与许可证见 [第三方声明](THIRD-PARTY-NOTICES.md)。
 
 服务端内置了需要走 `player_play_music` 接口的小爱型号白名单（`X08*`、`LX0*`、`L05B/L05C`、`L06A`、`L15A/L16A/L17A`、`OH2/OH2P` 等）。如果某个型号直连播放“能连上但没声音”，通常是它需要 `player_play_music` 却没在内置表里——在管理页“运行配置 → 自定义直连播放型号”里填入型号代码（逗号分隔）即可补充，无需改代码。
@@ -223,3 +226,8 @@ bash install.sh --update
 - **`HMUSIC_PUBLIC_BASE_URL`**：局域网 IPv4 会自动探测，通常留默认。仅反向代理 / 公网域名场景才显式填写。
 - **数据备份**：直接备份宿主机 `./data` 目录即可。
 - **数据权限**：推荐始终使用 `bash install.sh`，脚本会自动处理 NAS 上常见的 UID/GID 不一致问题，无需 `chmod 777`。
+
+## 许可证
+
+HMusic Server 本身采用 [Apache License 2.0](LICENSE)。小爱音箱兼容层涉及的上游参考实现及其许可证，
+请查看 [第三方声明](THIRD-PARTY-NOTICES.md)。

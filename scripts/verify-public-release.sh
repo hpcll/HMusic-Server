@@ -14,11 +14,12 @@ node <<'NODE'
 const repo = process.env.HMUSIC_VERIFY_REPO;
 const image = process.env.HMUSIC_VERIFY_IMAGE.toLowerCase();
 const headers = { "user-agent": "hmusic-public-release-verifier" };
+const requestTimeout = () => AbortSignal.timeout(15_000);
 const failures = [];
 
 async function expectOk(name, url, inspect) {
   try {
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, { headers, signal: requestTimeout() });
     if (!response.ok) {
       failures.push(`${name}: HTTP ${response.status}`);
       return;
@@ -65,7 +66,7 @@ await expectOk(
 try {
   const tokenResponse = await fetch(
     `https://ghcr.io/token?scope=repository:${image}:pull`,
-    { headers },
+    { headers, signal: requestTimeout() },
   );
   if (!tokenResponse.ok) {
     failures.push(`GHCR 匿名令牌: HTTP ${tokenResponse.status}`);
@@ -84,6 +85,7 @@ try {
             "application/vnd.oci.image.manifest.v1+json",
           ].join(", "),
         },
+        signal: requestTimeout(),
       },
     );
     if (!manifestResponse.ok) {
