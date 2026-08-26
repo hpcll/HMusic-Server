@@ -137,7 +137,7 @@ jobs:
 
       - name: Build deployment package
         run: |
-          PACKAGE_VERSION="$(node -p \"require('./package.json').version\")"
+          PACKAGE_VERSION="$(node -e 'console.log(require("./package.json").version)')"
           RELEASE_TAG="${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
           if [ "v${PACKAGE_VERSION}" != "$RELEASE_TAG" ]; then
             echo "Tag $RELEASE_TAG 与 package.json 版本 v${PACKAGE_VERSION} 不一致" >&2
