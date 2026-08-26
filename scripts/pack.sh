@@ -31,21 +31,24 @@ tar --exclude='.DS_Store' --exclude='*/.DS_Store' -czf "$OUT" \
   bootstrap.sh install.sh docker-compose.yml
 
 echo "[2.5/3] 校验产物内已包含前端运行时库…"
+ARCHIVE_LIST="$(mktemp)"
+trap 'rm -f "$ARCHIVE_LIST"' EXIT
+tar tzf "$OUT" > "$ARCHIVE_LIST"
 for f in "${REQUIRED_VENDOR[@]}"; do
-  if ! tar tzf "$OUT" | grep -qx "$f"; then
+  if ! grep -Fx "$f" "$ARCHIVE_LIST" >/dev/null; then
     echo "❌ 产物 $OUT 内缺少 $f —— 打包失败。" >&2
     rm -f "$OUT"
     exit 1
   fi
 done
 for f in bootstrap.sh install.sh docker-compose.yml LICENSE README.md docs/DEPLOYMENT.md THIRD-PARTY-NOTICES.md scripts/deploy-common.sh scripts/stop.sh; do
-  if ! tar tzf "$OUT" | grep -qx "$f"; then
+  if ! grep -Fx "$f" "$ARCHIVE_LIST" >/dev/null; then
     echo "❌ 产物 $OUT 内缺少 $f —— 打包失败。" >&2
     rm -f "$OUT"
     exit 1
   fi
 done
-if tar tzf "$OUT" | grep -qE '(^|/)\.DS_Store$'; then
+if grep -E '(^|/)\.DS_Store$' "$ARCHIVE_LIST" >/dev/null; then
   echo "❌ 产物 $OUT 含有 .DS_Store，打包失败。" >&2
   rm -f "$OUT" "$CHECKSUM_OUT"
   exit 1
