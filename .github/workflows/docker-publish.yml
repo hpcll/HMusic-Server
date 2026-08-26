@@ -1,6 +1,7 @@
 name: Build & Publish HMusic release
 
-# 触发：推 v* tag（如 vX.Y.Z）发正式版；也可在 Actions 页手动触发源码校验。
+# 触发：推 v* tag（如 vX.Y.Z）发正式版；也可在 Actions 页留空版本号做源码校验，
+# 或填写与 package.json 一致的版本号发布当前选定分支。
 on:
   push:
     tags:
@@ -19,6 +20,8 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      HMUSIC_JWT_SECRET: ci-only-hmusic-jwt-secret
 
     steps:
       - name: Checkout
