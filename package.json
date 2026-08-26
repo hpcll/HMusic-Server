@@ -1,7 +1,8 @@
 {
   "name": "hmusic-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "HMusic Server - self-hosted backend for HMusic.",
   "scripts": {
@@ -11,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:deploy": "bash test/deployment-scripts.sh",
+    "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "verify:release": "bash scripts/verify-public-release.sh",
     "lint": "eslint src test",
     "format": "prettier --write src test"

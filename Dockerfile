@@ -45,6 +45,7 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/web ./web
 COPY --chown=node:node package.json ./
+COPY --chown=node:node THIRD-PARTY-NOTICES.md ./
 
 USER node
 

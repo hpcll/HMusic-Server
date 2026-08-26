@@ -1,6 +1,7 @@
 import os from "node:os";
 import Bonjour from "bonjour-service";
 import { env } from "../config/env.js";
+import { serverVersion } from "./version.js";
 
 // 局域网自广播：注册 _hmusic._tcp，客户端订阅即可秒级发现本服务（端口随
 // SRV 记录下发，不再依赖客户端按默认端口扫段）。发布名带主机名，多台
@@ -22,7 +23,7 @@ export function startMdnsAdvertiser(log: MdnsLogger): void {
       type: "hmusic",
       port: env.port,
       // 与 GET /system/info 一致的身份元数据；客户端仍以 /system/info 为准。
-      txt: { api: "v1", version: "0.1.0" },
+      txt: { api: "v1", version: serverVersion },
     });
   } catch (error) {
     log.error(

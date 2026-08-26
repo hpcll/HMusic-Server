@@ -1,6 +1,6 @@
 name: Build & Publish HMusic release
 
-# 触发：推 v* tag（如 v0.1.0）发正式版；也可在 Actions 页手动触发。
+# 触发：推 v* tag（如 vX.Y.Z）发正式版；也可在 Actions 页手动触发源码校验。
 on:
   push:
     tags:
@@ -30,6 +30,7 @@ jobs:
 
       - name: Verify source and deployment scripts
         run: |
+          npm run audit:prod
           npm run typecheck
           npm run test:deploy
           npm test
@@ -37,6 +38,7 @@ jobs:
           npm run build
 
   build-and-push:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -89,7 +91,6 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
             type=ref,event=tag
 
       - name: Build and push (amd64 + arm64)

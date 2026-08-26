@@ -4,6 +4,8 @@ HMusic App 的自建后端，负责服务端登录、运行配置、小米账号
 
 ## 快速开始
 
+公开安装、平台选择、升级和备份见 [部署指南](docs/DEPLOYMENT.md)。
+
 装到 NAS、服务器或长期开机的电脑上，推荐直接执行一行：
 
 ```bash
@@ -32,6 +34,17 @@ curl -fsSL https://raw.githubusercontent.com/hpcll/HMusic-Server/main/bootstrap.
 wget -qO- https://raw.githubusercontent.com/hpcll/HMusic-Server/main/bootstrap.sh | bash
 ```
 
+如果所在网络无法直接访问 GitHub，可以把 `HMUSIC_BOOTSTRAP_URL` 指向可访问的镜像脚本，
+并把 `HMUSIC_GITHUB_PROXY` 设置为该镜像的 GitHub URL 前缀。代理地址支持 `{url}` 占位符：
+
+```bash
+export HMUSIC_BOOTSTRAP_URL='https://你的镜像站/bootstrap.sh'
+export HMUSIC_GITHUB_PROXY='https://你的镜像站/{url}'
+curl -fsSL "$HMUSIC_BOOTSTRAP_URL" | bash
+```
+
+镜像站应同时提供部署包和 `.sha256` 校验文件；请使用可信的镜像服务，避免把账号凭据交给未知代理。
+
 想先查看代码再安装，可以使用 Git：
 
 ```bash
@@ -46,26 +59,6 @@ Git 安装以后升级执行 `bash install.sh --update`；已有配置、账号�
 首次选择的 Docker/原生方式，升级时自动沿用；只有显式传 `--docker` 或 `--native` 才切换方式。
 
 细节和平台差异见 [Docker 部署](#docker-部署各种-nas--服务器)。
-
-## Development
-
-```bash
-npm install
-cp .env.example .env
-npm run dev
-```
-
-Health check:
-
-```bash
-curl http://127.0.0.1:6650/api/v1/system/info
-```
-
-Web 前端：
-
-```text
-http://127.0.0.1:6650/app/
-```
 
 `/app/` 是一个基于 Vue 3 的单页应用（免构建，运行时已随仓库 vendored 到
 `web/vendor/`，局域网离线可用）。首次访问引导创建管理员账号，之后包含
@@ -97,7 +90,7 @@ HMUSIC_PUBLIC_BASE_URL=https://music.example.com
 
 如果小米短信验证被限频，管理页的小米账号区域可以通过“网页登录验证”导入验证完成地址，也可以在“导入已有小米会话”里导入 STS URL 或 `serviceToken + userId` 会话。
 
-现有 Flutter App 仍有部分旧风格调用。服务端提供过渡兼容入口，包括 `/getversion`、`/getsetting`、`/api/js-plugins`、`/api/device/pushList`、`/getplayerstatus` 等；App 发来的客户端搜索结果会被转换成 HMusic 队列并复用服务端播放链路。
+旧版 HMusic App 仍可使用，服务端保留了兼容入口，通常无需额外配置；新版本优先使用当前页面和接口。
 
 新接口推荐直接提交客户端搜索结果：
 
@@ -121,11 +114,14 @@ HMUSIC_PUBLIC_BASE_URL=https://music.example.com
 
 ### 小爱音箱型号适配
 
+小爱音箱播放和 TTS 兼容逻辑参考了 [xiaomusic](https://github.com/hanxi/xiaomusic) 的公开实现，
+具体致谢与许可证见 [第三方声明](THIRD-PARTY-NOTICES.md)。
+
 服务端内置了需要走 `player_play_music` 接口的小爱型号白名单（`X08*`、`LX0*`、`L05B/L05C`、`L06A`、`L15A/L16A/L17A`、`OH2/OH2P` 等）。如果某个型号直连播放“能连上但没声音”，通常是它需要 `player_play_music` 却没在内置表里——在管理页“运行配置 → 自定义直连播放型号”里填入型号代码（逗号分隔）即可补充，无需改代码。
 
 `POST /api/v1/playback/speak`（body: `{ "text": "...", "deviceId": "..." }`）可让小爱音箱语音播报一段文字。机型在内置 TTS 表内（`LX06`、`L05B/L05C`、`X08E`、`OH2/OH2P` 等）时走 miio 域 `miotspec/action`（需登录时留下的 passToken 静默换 `sid=xiaomiio` 会话）；表外机型回退 MiNA ubus `mibrain/text_to_speech` → `player_play_tts`。运行配置里的 `announceTracks` 开关（默认关）可让音箱开播前先播报「即将播放 XX」。
 
-## Production
+## 手动安装（高级）
 
 ```bash
 npm ci
@@ -134,31 +130,10 @@ npm run build
 npm start
 ```
 
-手动部署时必须修改 `.env` 里的 `HMUSIC_JWT_SECRET`。默认 `HMUSIC_DATA_DIR=./data` 已是项目目录中的持久化位置；只有想把数据放到其它磁盘时才需要改它。App 访问地址填写 `http://<server-ip>:6650` 或反向代理后的 HTTPS 地址；`HMUSIC_PUBLIC_BASE_URL` 仅在反向代理或公网域名场景需要填写，局域网 IPv4 会自动探测。
-
-### 一键部署到另一台服务器
-
-如果开发机和运行服务器是两台机器，用打包脚本把产物送过去。部署包同时包含 Docker 与
-预编译原生入口，原生服务器无需安装 TypeScript 开发工具链：
-
-```bash
-# 开发机：编译 + 打包，产出部署包和 SHA-256 校验文件
-bash scripts/pack.sh
-
-# 拷到服务器（scp/rsync/共享盘任选），解压后：
-tar -xzf hmusic-deploy.tar.gz
-bash install.sh              # 自动选择 Docker/原生、生成密钥、启动并验证服务
-```
-
-脚本会直接打印访问地址。重复运行会保留 `.env` 和数据，并重启到部署包中的版本。
-运行日志在 `data/server.log`，PID 在 `data/hmusic.pid`。停止服务执行：
-
-```bash
-bash scripts/stop.sh
-```
-
-每次推送 `v*` tag，GitHub Actions 都会自动把最新版 `hmusic-deploy.tar.gz` 与 SHA-256
-校验文件附加到对应 GitHub Release。只想走原生模式，也可执行 `bash scripts/deploy-run.sh`。
+手动部署需要 Node.js 20+。请修改 `.env` 里的 `HMUSIC_JWT_SECRET`，不能使用空值或 `change-me`。
+默认 `HMUSIC_DATA_DIR=./data` 已是项目目录中的持久化位置；只有想把数据放到其它磁盘时才需要改它。
+App 访问地址填写 `http://<server-ip>:6650` 或反向代理后的 HTTPS 地址；
+`HMUSIC_PUBLIC_BASE_URL` 仅在反向代理或公网域名场景需要填写，局域网 IPv4 会自动探测。
 
 ### Linux 裸机：开机自启（systemd）
 
@@ -186,14 +161,13 @@ sudo rm /etc/systemd/system/hmusic-server.service && sudo systemctl daemon-reloa
 
 ## Docker 部署（各种 NAS / 服务器）
 
-镜像已发布到 GHCR，双架构 amd64 + arm64（v0.1.0 起）：
+正式版本会提供双架构（amd64 + arm64）镜像：
 
 ```text
 ghcr.io/hpcll/hmusic-server:latest
 ```
 
-拉取报 `denied` / `unauthorized` 说明包还是 private，见文末
-「发布镜像（维护者）」里的可见性设置步骤。
+推荐直接执行 `bash install.sh`，安装器会自动拉取与启动对应版本。
 
 ### ⚠️ 先看这里：平台选择
 
@@ -249,42 +223,3 @@ bash install.sh --update
 - **`HMUSIC_PUBLIC_BASE_URL`**：局域网 IPv4 会自动探测，通常留默认。仅反向代理 / 公网域名场景才显式填写。
 - **数据备份**：直接备份宿主机 `./data` 目录即可。
 - **数据权限**：推荐始终使用 `bash install.sh`，脚本会自动处理 NAS 上常见的 UID/GID 不一致问题，无需 `chmod 777`。
-
-### 发布镜像（维护者）
-
-推一个 `v*` tag 即触发 GitHub Actions 自动构建双架构镜像、推送到 GHCR，并创建带部署包的 Release：
-
-```bash
-# 先确保 package.json 的 version 与 tag 一致
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-镜像会自动打上四个标签：`0.1.0`、`0.1`、`v0.1.0`、`latest`；Release 会附带
-`hmusic-deploy.tar.gz` 和 `hmusic-deploy.tar.gz.sha256`。工作流见
-`.github/workflows/docker-publish.yml`。
-
-⚠️ **首次发布后必须手动把包设为 Public**：GHCR 新建的包默认 private，
-此时用户 `docker compose pull` 会因无权限失败（匿名拉取返回 401）。
-去 `https://github.com/users/hpcll/packages/container/hmusic-server/settings`
-→ Danger Zone → Change visibility → Public。这一步只需做一次，
-后续版本继承该可见性。
-
-仓库设为 Public、推送新 tag、Release 工作流完成并设置 GHCR 可见性后，执行匿名验收：
-
-```bash
-npm run verify:release
-```
-
-它不会读取 GitHub 登录状态，会依次验证仓库、`bootstrap.sh`、Latest Release 部署包、
-SHA-256 校验文件和 GHCR `latest` manifest；全部通过才代表小白用户真的可以无账号安装。
-
-## Verification
-
-```bash
-npm run typecheck
-npm run test:deploy
-npm test
-npm run lint
-npm run build
-```

@@ -6,6 +6,7 @@ import type {
 } from "../../shared/contracts.js";
 import { trackFromClientSong } from "../../shared/client-track.js";
 import { AppError } from "../../shared/errors.js";
+import { serverVersion } from "../../shared/version.js";
 import { verifyLogin } from "../auth/auth.service.js";
 import { listDevices } from "../devices/devices.service.js";
 import {
@@ -47,7 +48,7 @@ const playMusicListSchema = z
 export async function compatRoutes(app: FastifyInstance): Promise<void> {
   app.get("/getversion", { preHandler: requireCompatAuth }, async () => ({
     name: "HMusic Server",
-    version: "0.1.0",
+    version: serverVersion,
     server: "hmusic",
   }));
 

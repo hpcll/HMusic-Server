@@ -11,6 +11,9 @@ REPO_SLUG="${HMUSIC_REPO:-hpcll/HMusic-Server}"
 REPO_URL="https://github.com/${REPO_SLUG}.git"
 RELEASE_URL="${HMUSIC_RELEASE_URL:-https://github.com/${REPO_SLUG}/releases/latest/download/hmusic-deploy.tar.gz}"
 CHECKSUM_URL="${HMUSIC_RELEASE_SHA256_URL:-${RELEASE_URL}.sha256}"
+# 网络受限时可提供一个 GitHub 代理前缀；支持把完整 URL 放在 {url} 占位符中。
+# 例如：HMUSIC_GITHUB_PROXY='https://mirror.example/{url}'
+GITHUB_PROXY="${HMUSIC_GITHUB_PROXY:-}"
 DEFAULT_HOME="${HOME:-}"
 [ -n "$DEFAULT_HOME" ] || die "无法确定用户目录，请先设置 HOME，或用 HMUSIC_INSTALL_DIR 指定安装目录。"
 DEFAULT_INSTALL_DIR="${DEFAULT_HOME}/HMusic-Server"
@@ -32,6 +35,30 @@ download_file() {
   else
     return 127
   fi
+}
+
+github_proxy_url() {
+  local url="$1"
+  case "$GITHUB_PROXY" in
+    *'{url}'*) printf '%s\n' "${GITHUB_PROXY//\{url\}/$url}" ;;
+    */) printf '%s%s\n' "$GITHUB_PROXY" "$url" ;;
+    *) printf '%s/%s\n' "$GITHUB_PROXY" "$url" ;;
+  esac
+}
+
+download_github_file() {
+  local url="$1" output="$2" proxied_url
+  if download_file "$url" "$output"; then
+    return 0
+  fi
+  [ -n "$GITHUB_PROXY" ] || return 1
+  case "$url" in
+    https://github.com/*|https://raw.githubusercontent.com/*|https://codeload.github.com/*) ;;
+    *) return 1 ;;
+  esac
+  proxied_url="$(github_proxy_url "$url")"
+  warn "直连 GitHub 失败，尝试配置的下载代理…"
+  download_file "$proxied_url" "$output"
 }
 
 run_installer() {
@@ -76,7 +103,7 @@ cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT INT TERM
 
 say "正在下载 HMusic 最新部署包…"
-if ! download_file "$RELEASE_URL" "$ARCHIVE"; then
+if ! download_github_file "$RELEASE_URL" "$ARCHIVE"; then
   warn "最新 Release 部署包暂时不可用。"
   if command -v git >/dev/null 2>&1 && { [ ! -d "$INSTALL_DIR" ] || [ -z "$(ls -A "$INSTALL_DIR" 2>/dev/null || true)" ]; }; then
     say "改用 Git 获取最新版…"
@@ -87,7 +114,7 @@ if ! download_file "$RELEASE_URL" "$ARCHIVE"; then
   die "下载失败。请检查网络和 Release 是否已发布；已有安装不会被改动。"
 fi
 
-if download_file "$CHECKSUM_URL" "$CHECKSUM"; then
+if download_github_file "$CHECKSUM_URL" "$CHECKSUM"; then
   EXPECTED_SHA256="$(awk 'NR == 1 {print $1}' "$CHECKSUM")"
   case "$EXPECTED_SHA256" in
     ''|*[!a-fA-F0-9]*)

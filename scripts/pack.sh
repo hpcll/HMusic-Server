@@ -27,7 +27,7 @@ for f in "${REQUIRED_VENDOR[@]}"; do
 done
 # 同一部署包同时支持 Docker 与原生安装；不包含 .env/data，覆盖升级不会碰用户状态。
 tar --exclude='.DS_Store' --exclude='*/.DS_Store' -czf "$OUT" \
-  dist web package.json package-lock.json .env.example README.md scripts \
+  dist web package.json package-lock.json .env.example README.md docs/DEPLOYMENT.md THIRD-PARTY-NOTICES.md scripts \
   bootstrap.sh install.sh docker-compose.yml
 
 echo "[2.5/3] 校验产物内已包含前端运行时库…"
@@ -38,7 +38,7 @@ for f in "${REQUIRED_VENDOR[@]}"; do
     exit 1
   fi
 done
-for f in bootstrap.sh install.sh docker-compose.yml scripts/deploy-common.sh scripts/stop.sh; do
+for f in bootstrap.sh install.sh docker-compose.yml docs/DEPLOYMENT.md THIRD-PARTY-NOTICES.md scripts/deploy-common.sh scripts/stop.sh; do
   if ! tar tzf "$OUT" | grep -qx "$f"; then
     echo "❌ 产物 $OUT 内缺少 $f —— 打包失败。" >&2
     rm -f "$OUT"

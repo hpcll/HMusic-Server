@@ -165,6 +165,7 @@ describe("api contract", () => {
         expect.objectContaining({
           server: "hmusic",
           name: "HMusic Server",
+          version: info.json().version,
         }),
       );
 
