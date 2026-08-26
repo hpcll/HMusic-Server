@@ -12,6 +12,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      HMUSIC_JWT_SECRET: ci-only-hmusic-jwt-secret
     steps:
       - name: Checkout
         uses: actions/checkout@v4
