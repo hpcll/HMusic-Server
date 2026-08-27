@@ -2,6 +2,15 @@
 
 HMusic App 的自建后端，负责服务端登录、运行配置、小米账号设备、音源插件、搜索解析和小爱音箱播放控制。
 
+## 配套客户端
+
+HMusic-Server 与 [HMusic-App](https://github.com/hpcll/HMusic-App) 配套使用。移动端负责本机后台播放、搜索、
+歌词、歌单和队列操作；桌面端还可用于管理内容和遥控小爱音箱。客户端安装包和跨平台使用说明见
+[HMusic-App Releases](https://github.com/hpcll/HMusic-App/releases) 与 [App README](https://github.com/hpcll/HMusic-App#readme)。
+
+Server 自带的 `/app/` 是管理和诊断页面，不是必须嵌入客户端的 WebView。首次部署时用它创建管理员、登录小米账号、
+刷新设备并播放测试音；日常听歌可以直接使用 HMusic App。
+
 ## 快速开始
 
 公开安装、平台选择、升级和备份见 [部署指南](docs/DEPLOYMENT.md)。
@@ -58,6 +67,9 @@ bash install.sh
 Git 安装以后升级执行 `bash install.sh --update`；已有配置、账号和数据不会被覆盖。安装器会记住
 首次选择的 Docker/原生方式，升级时自动沿用；只有显式传 `--docker` 或 `--native` 才切换方式。
 
+部署成功后，将手机、平板或电脑与 Server 放在同一局域网，打开 HMusic App。App 会自动发现并验证这台 Server，
+点选发现结果即可连接；发现不到时再使用 App 的“手动输入地址”，填写安装器输出的基础地址和端口 `6650`。
+
 细节和平台差异见 [Docker 部署](#docker-部署各种-nas--服务器)。
 
 `/app/` 是一个基于 Vue 3 的单页应用（免构建，运行时已随仓库 vendored 到
@@ -90,7 +102,8 @@ HMUSIC_PUBLIC_BASE_URL=https://music.example.com
 
 如果小米短信验证被限频，管理页的小米账号区域可以通过“网页登录验证”导入验证完成地址，也可以在“导入已有小米会话”里导入 STS URL 或 `serviceToken + userId` 会话。
 
-旧版 HMusic App 仍可使用，服务端保留了兼容入口，通常无需额外配置；新版本优先使用当前页面和接口。
+HMusic App 与服务端共享当前 API 契约。服务端保留旧兼容入口以便旧客户端平滑升级，但新版本优先使用当前页面和接口；
+升级 Server 后请同时查看 [HMusic-App Releases](https://github.com/hpcll/HMusic-App/releases) 的兼容说明。
 
 新接口推荐直接提交客户端搜索结果：
 
