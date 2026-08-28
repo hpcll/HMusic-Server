@@ -251,6 +251,17 @@ if HMUSIC_INSTALL_DIR="$BOOTSTRAP_TEST_DIR/install" \
   exit 1
 fi
 
+# 升级守护契约：watchtower 的 HTTP API 端口硬编码 8080、没有 --http-api-port 可传，
+# 端口映射对齐服务端默认的 127.0.0.1:8666。传错 flag 会让容器无限重启，
+# 端口写歪则一键升级永远「守护不在线」，两者都不会在安装时报错，所以在这里锁住。
+# 注释行要排除：compose 里特意留了这个坑的说明文字。
+if grep -v '^[[:space:]]*#' "$ROOT/docker-compose.yml" | grep -q 'http-api-port'; then
+  echo "watchtower 没有 --http-api-port 参数，传了会导致 hmusic-updater 反复重启" >&2
+  exit 1
+fi
+grep -q '"127.0.0.1:8666:8080"' "$ROOT/docker-compose.yml"
+grep -q 'http://127.0.0.1:8666' "$ROOT/src/modules/system/update.service.ts"
+
 mkdir -p dist data
 cp server.mjs dist/main.js
 printf '%s\n' 'not-a-pid' > data/hmusic.pid

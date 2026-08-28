@@ -53,6 +53,29 @@ if command -v docker >/dev/null 2>&1; then
   docker info >/dev/null 2>&1 && has_docker=true
 fi
 
+# 升级守护是可选能力：它起不来不该阻断安装，但必须当场说清楚。
+# 否则用户只会在 App 点「立即升级」时才发现守护缺席（历史上 compose 给
+# watchtower 传了不存在的 --http-api-port，容器反复重启且无人察觉）。
+check_updater_container() {
+  local id state attempt
+  id="$(docker compose ps -q hmusic-updater 2>/dev/null || true)"
+  state=""
+  attempt=1
+  while [ -n "$id" ] && [ "$attempt" -le 5 ]; do
+    state="$(docker inspect --format '{{.State.Status}}' "$id" 2>/dev/null || true)"
+    [ "$state" = running ] && break
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  if [ "$state" = running ]; then
+    return 0
+  fi
+  warn "升级守护 hmusic-updater 未在运行（状态：${state:-未创建}）。
+   服务本身不受影响，只是 App 里的一键升级会提示守护不在线。
+   排查：docker compose logs hmusic-updater
+   手动升级随时可用：bash install.sh --update"
+}
+
 systemd_native=false
 if [ "$OS" = Linux ] && command -v systemctl >/dev/null 2>&1; then
   if systemctl is-active --quiet hmusic-server 2>/dev/null \
@@ -161,6 +184,7 @@ if [ "$MODE" = docker ]; then
   fi
   record_deploy_mode docker
   ok "容器已启动并通过健康检查"
+  check_updater_container
   echo
   say "常用命令："
   echo "   查看日志:  docker compose logs -f"

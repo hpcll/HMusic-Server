@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- 后续变更将在此记录。
+- 修复 Docker 升级守护 `hmusic-updater` 无限重启：compose 曾给 watchtower 传了它不存在的
+  `--http-api-port`，参数解析失败即退出，被 `restart: unless-stopped` 反复拉起。守护改用桥接网络
+  加 `127.0.0.1:8666:8080` 端口映射对齐服务端调用地址，镜像固定到 `containrrr/watchtower:1.7.1`。
+- 安装器在容器健康检查通过后确认升级守护真的在运行，未运行时打印状态和排查命令，不再静默通过。
 
 ## 0.2.0 - 2026-08-26
 

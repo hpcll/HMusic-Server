@@ -239,6 +239,7 @@ bash install.sh --update
 - **`HMUSIC_PUBLIC_BASE_URL`**：局域网 IPv4 会自动探测，通常留默认。仅反向代理 / 公网域名场景才显式填写。
 - **数据备份**：直接备份宿主机 `./data` 目录即可。
 - **数据权限**：推荐始终使用 `bash install.sh`，脚本会自动处理 NAS 上常见的 UID/GID 不一致问题，无需 `chmod 777`。
+- **升级守护**：`hmusic-updater`（watchtower）只把升级接口绑在宿主机回环 `127.0.0.1:8666`，供服务端触发 App 里的一键升级，不对局域网开放。它反复重启说明配置过旧，执行 `bash install.sh --update` 重建即可；守护缺席只影响一键升级，不影响听歌。
 
 ## 许可证
 

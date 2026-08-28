@@ -71,14 +71,22 @@ services:
   # 只响应显式触发（无定时轮询），且 scope 限定只动带 hmusic 标签的容器。
   # docker.sock 交给 watchtower（社区标准更新器）而非业务容器，权限面最小。
   hmusic-updater:
-    image: containrrr/watchtower:latest
+    image: containrrr/watchtower:1.7.1
     container_name: hmusic-updater
     restart: unless-stopped
-    network_mode: host
+
+    # watchtower 只跟 docker.sock 和镜像仓库打交道，不需要 host 网络。
+    # 它的 HTTP API 端口硬编码在 8080 且没有命令行参数可改（曾误传
+    # --http-api-port，watchtower 认不出这个 flag 直接退出 → 无限重启），
+    # 所以改用端口映射对齐服务端默认的 127.0.0.1:8666。
+    # 只绑回环：升级接口不暴露到局域网，同时避开宿主机 8080 常被占用的问题。
+    ports:
+      - "127.0.0.1:8666:8080"
+
     labels:
       - com.centurylinklabs.watchtower.scope=hmusic
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       WATCHTOWER_HTTP_API_TOKEN: ${HMUSIC_UPDATE_TOKEN:?缺少 HMUSIC_UPDATE_TOKEN。请运行 bash install.sh 自动生成}
-    command: --http-api-update --http-api-port 8666 --scope hmusic --cleanup
+    command: --http-api-update --scope hmusic --cleanup
