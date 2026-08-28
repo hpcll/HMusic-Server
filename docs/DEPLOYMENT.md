@@ -100,6 +100,22 @@ bash scripts/stop.sh
 升级不会覆盖 `.env` 和 `data/`。升级前停止服务并备份 `data/` 与 `.env`；恢复时先恢复文件，再运行
 `bash install.sh`。不要把账号会话、数据库、音源插件或 `.env` 上传到公开 Issue。
 
+也可以在管理页「设置 → 系统 → 关于与更新」或 App 里点一键升级：原生部署直接跑
+`install.sh --update`，Docker 部署由 `hmusic-updater`（watchtower）拉新镜像并原地重建容器。
+两种方式都不动 `data/` 和 `.env`。
+
+一键升级提示「升级守护不在线」时，先确认守护容器在跑：
+
+```bash
+docker compose ps hmusic-updater
+docker compose logs --tail=30 hmusic-updater
+```
+
+守护的 HTTP 接口固定在容器内 8080，compose 把它映射到宿主机回环 `127.0.0.1:8666`。少数
+宿主机关掉了 Docker 的 userland-proxy，回环映射不生效，服务端就探不到守护；这种情况把服务端的
+`HMUSIC_UPDATER_URL` 指向容器实际地址（例如 `http://172.17.0.1:8666`）即可，或者继续用
+`bash install.sh --update` 在宿主机升级。
+
 ## 健康检查
 
 ```bash
