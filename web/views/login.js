@@ -29,6 +29,10 @@ export const LoginView = {
         });
         setToken(result.accessToken);
         await refreshAuth();
+        // 凭据签发成功，但服务端随即不认它（公网反代删/改 Authorization 头是最常见
+        // 的原因）：refreshAuth 已经把原因弹出来了，这里不能再报「登录成功」盖掉它，
+        // 也不该跳到需要登录的页面——否则用户只看到自己被弹回登录页。
+        if (!store.authenticated) return;
         await refreshPlayback();
         toast(isSetup.value ? "管理员已创建" : "登录成功", "success");
         go("player");

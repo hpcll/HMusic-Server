@@ -41,6 +41,53 @@ curl -fsSL "$HMUSIC_BOOTSTRAP_URL" | bash
 - Windows：在 Git Bash 中使用 native；Docker Desktop 的局域网发现需要额外网络配置。
 - 默认端口：`6650`。反向代理或公网访问必须配置有效 HTTPS 和 `HMUSIC_PUBLIC_BASE_URL`。
 
+## 反向代理与公网访问
+
+代理必须原样转发 `Authorization` 请求头：管理页和 App 都用 `Authorization: Bearer <token>` 认证，
+这个头被删除或改写时，服务端只能判定「没有凭据」，页面表现就是刚登录又被退回登录页。
+也不要在代理层给 `/api/v1` 再套 Basic auth、Authelia 之类的登录墙：它们会用自己的
+`Authorization` 覆盖 HMusic 的令牌，或者直接用 401 拦掉接口请求。
+
+Nginx 最小可用配置：
+
+```nginx
+location / {
+    proxy_pass http://192.168.1.20:6650;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Nginx 默认就会透传 Authorization；不要显式 proxy_set_header Authorization，
+    # 那样很容易把 Bearer 令牌覆盖成代理自己的凭据。
+}
+```
+
+同时把 `HMUSIC_PUBLIC_BASE_URL` 设为公网地址（如 `https://music.example.com`），否则下发给
+小爱音箱和客户端的音频地址仍是局域网 IP。公网暴露前请确认 HTTPS 证书有效、管理员密码足够强：
+`/app/` 是完整管理界面，包含小米账号会话。
+
+登录失败提示对照：
+
+| 页面提示 | 含义 |
+| --- | --- |
+| 用户名或密码错误 | 凭据本身不对，与代理无关 |
+| 服务端没收到本次请求的登录凭据… | 代理删除或改写了 `Authorization` 头 |
+| 响应不是 HMusic 的错误格式… | 401 来自代理或网关，请求没到 HMusic |
+| 登录已失效，请重新登录 | 服务端收到凭据但拒绝了（例如换过 `HMUSIC_JWT_SECRET`） |
+
+自查（把地址换成自己的公网地址）：
+
+```bash
+curl -s https://music.example.com/api/v1/system/info
+TOKEN=$(curl -s -X POST https://music.example.com/api/v1/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","password":"你的密码"}' \
+  | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+curl -s -H "Authorization: Bearer $TOKEN" https://music.example.com/api/v1/auth/status
+```
+
+最后一条返回 `"authenticated":true` 说明代理转发正常；返回
+`"authError":"FST_JWT_NO_AUTHORIZATION_IN_HEADER"` 就是代理把 `Authorization` 头弄丢了。
+
 ## 升级、停止和备份
 
 重新执行同一条 bootstrap 命令，或在安装目录执行：

@@ -75,13 +75,14 @@ describe("api contract", () => {
 
       // App 远程配置中转公开可达，恒 200；shape 固定 {available, config}。
       // 注入假 fetch 免真打 GitHub（离线 CI 确定性 + 不吃镜像超时）。
-      const updateSvc = await import(
-        "../../src/modules/system/update.service.js"
+      const updateSvc =
+        await import("../../src/modules/system/update.service.js");
+      updateSvc._setFetchForTests(
+        (async () =>
+          new Response(JSON.stringify({ minVersion: "0.0.0", notice: "" }), {
+            status: 200,
+          })) as typeof fetch,
       );
-      updateSvc._setFetchForTests((async () =>
-        new Response(JSON.stringify({ minVersion: "0.0.0", notice: "" }), {
-          status: 200,
-        })) as typeof fetch);
       try {
         const appConfig = await app.inject({
           method: "GET",
@@ -121,6 +122,11 @@ describe("api contract", () => {
         url: "/api/v1/playback/state",
       });
       expect(unauthorized.statusCode).toBe(401);
+      // 反代排查全靠这个 code：请求里没有 Authorization 和「凭据过期」必须能分开，
+      // 前者在客户端带了 token 的情况下就等于代理把头弄丢了。
+      expect(unauthorized.json().error.code).toBe(
+        "FST_JWT_NO_AUTHORIZATION_IN_HEADER",
+      );
 
       // 升级检查/触发是敏感操作：/system/info 公开，但 /system/update 必须登录。
       const updateCheckUnauthorized = await app.inject({
@@ -148,6 +154,46 @@ describe("api contract", () => {
       const basicHeaders = {
         authorization: `Basic ${Buffer.from("admin:integration-password").toString("base64")}`,
       };
+
+      // 密码错必须是 INVALID_CREDENTIALS，不能和「会话失效」混在一起：
+      // SPA 据此把「用户名或密码错误」原文报出来（曾被一律改写成「登录已失效」）。
+      const badLogin = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/login",
+        payload: {
+          username: "admin",
+          password: "wrong-integration-password",
+        },
+      });
+      expect(badLogin.statusCode).toBe(401);
+      expect(badLogin.json().error.code).toBe("INVALID_CREDENTIALS");
+      expect(badLogin.json().error.message).toBe("用户名或密码错误");
+
+      // 反代把 Authorization 换成自己的 Basic 凭据时的样子：/auth/status 不 401，
+      // 而是回 authenticated:false + authError，前端据此提示代理动过请求头。
+      // 非 Bearer 的头在 @fastify/jwt 里与「没有头」同一个 code。
+      const statusWithBasic = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/status",
+        headers: basicHeaders,
+      });
+      expect(statusWithBasic.statusCode).toBe(200);
+      expect(statusWithBasic.json()).toEqual(
+        expect.objectContaining({
+          initialized: true,
+          authenticated: false,
+          authError: "FST_JWT_NO_AUTHORIZATION_IN_HEADER",
+        }),
+      );
+
+      const statusWithToken = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/status",
+        headers,
+      });
+      expect(statusWithToken.json()).toEqual(
+        expect.objectContaining({ authenticated: true }),
+      );
 
       const compatUnauthorized = await app.inject({
         method: "GET",
@@ -1111,7 +1157,9 @@ describe("api contract", () => {
         expect.objectContaining({
           media: "app_ios",
           // 同上：回环 base 被实时替换为局域网 IPv4，host 不写死。
-          music: expect.stringMatching(/http:\/\/[^/]+\/api\/v1\/proxy\/audio\//),
+          music: expect.stringMatching(
+            /http:\/\/[^/]+\/api\/v1\/proxy\/audio\//,
+          ),
         }),
       );
 
@@ -1380,7 +1428,11 @@ describe("api contract", () => {
       expect(
         ubusCalls
           .slice(ubusCountBeforeLocalPlay)
-          .map((item) => [item.deviceId, item.method, (item.message as { action?: string })?.action]),
+          .map((item) => [
+            item.deviceId,
+            item.method,
+            (item.message as { action?: string })?.action,
+          ]),
       ).toEqual([
         ["xiaomi-speaker", "player_play_operation", "pause"],
         ["xiaomi-speaker", "player_play_operation", "stop"],

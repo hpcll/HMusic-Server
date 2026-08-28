@@ -39,10 +39,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           username: payload.username,
         },
       };
-    } catch {
+    } catch (error) {
+      // authError 是反代排查的抓手：带了凭据却验不过时如实回报原因
+      //（FST_JWT_NO_AUTHORIZATION_IN_HEADER = 代理把 Authorization 头弄丢了，
+      // FST_JWT_BAD_REQUEST = 头被改成了非 Bearer 格式）。只回 authenticated:false
+      // 的话，用户看到的是「登录成功后又被弹回登录页」，无从判断问题在哪。
       return {
         initialized,
         authenticated: false,
+        authError:
+          error && typeof error === "object" && "code" in error
+            ? String(error.code)
+            : "UNAUTHORIZED",
       };
     }
   });

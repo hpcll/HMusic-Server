@@ -50,11 +50,29 @@ export function registerErrorHandler(app: FastifyInstance): void {
           : 500;
       return reply.status(statusCode).send({
         error: {
-          code: statusCode === 401 ? "UNAUTHORIZED" : "INTERNAL_ERROR",
+          code:
+            authFailureCode(error, statusCode) ??
+            (statusCode === 401 ? "UNAUTHORIZED" : "INTERNAL_ERROR"),
           message: statusCode === 500 ? "服务器内部错误" : error.message,
           details: {},
         },
       });
     },
   );
+}
+
+// 凭据类失败保留 @fastify/jwt 的原始 code（FST_JWT_NO_AUTHORIZATION_IN_HEADER、
+// FST_JWT_BAD_REQUEST、FST_JWT_AUTHORIZATION_TOKEN_EXPIRED…）。
+// 反向代理到公网时全靠它区分「代理把 Authorization 头删了/改写了」和「凭据本身过期」：
+// 一律压成 UNAUTHORIZED 的话，前端只能报「登录已失效」，用户和我们都无从下手。
+function authFailureCode(
+  error: object,
+  statusCode: number,
+): string | undefined {
+  if (!("code" in error) || typeof error.code !== "string" || !error.code) {
+    return undefined;
+  }
+  if (statusCode === 401 || error.code.startsWith("FST_JWT_"))
+    return error.code;
+  return undefined;
 }

@@ -1,5 +1,5 @@
 import { createApp, reactive, h } from "vue";
-import { api, clearToken } from "/app/api.js";
+import { api, clearToken, getToken } from "/app/api.js";
 import { Icons } from "/app/icons.js";
 import { LoginView } from "/app/views/login.js";
 import { PlayerView } from "/app/views/player.js";
@@ -45,6 +45,18 @@ export async function refreshAuth() {
   store.initialized = status.initialized;
   store.authenticated = status.authenticated;
   store.user = status.user || null;
+  // 本地有 token，服务端却说没认证：凭据在路上丢了或被改写了（公网反代最常见：
+  // 代理删掉/改写 Authorization 头）。不说明的话表现为「刚登录成功又被弹回登录页」，
+  // 用户只会以为密码错了。
+  if (!status.authenticated && getToken()) {
+    clearToken();
+    toast(
+      status.authError === "FST_JWT_AUTHORIZATION_TOKEN_EXPIRED"
+        ? "登录已过期，请重新登录"
+        : "服务端没认出本次登录凭据；公网/反向代理访问时请检查代理是否改动了 Authorization 请求头",
+      "error",
+    );
+  }
 }
 
 export async function refreshPlayback() {
