@@ -139,6 +139,11 @@ describe("api contract", () => {
         url: "/api/v1/system/update",
       });
       expect(updateTriggerUnauthorized.statusCode).toBe(401);
+      const updateLogUnauthorized = await app.inject({
+        method: "GET",
+        url: "/api/v1/system/update/log",
+      });
+      expect(updateLogUnauthorized.statusCode).toBe(401);
 
       const setup = await app.inject({
         method: "POST",
@@ -194,6 +199,16 @@ describe("api contract", () => {
       expect(statusWithToken.json()).toEqual(
         expect.objectContaining({ authenticated: true }),
       );
+
+      // 升级日志形状固定 {updating, log}：/app/ 的「关于与更新」用它显示进度，
+      // 并靠 updating 在重开页面时接上正在进行的升级。本地读文件，不打网络。
+      const updateLog = await app.inject({
+        method: "GET",
+        url: "/api/v1/system/update/log",
+        headers,
+      });
+      expect(updateLog.statusCode).toBe(200);
+      expect(updateLog.json()).toEqual({ updating: false, log: "" });
 
       const compatUnauthorized = await app.inject({
         method: "GET",

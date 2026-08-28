@@ -5,6 +5,7 @@ import { Icons } from "/app/icons.js";
 import { EmptyState, ErrorState, LoadingState } from "/app/components/feedback.js";
 import { MiAccountSection } from "/app/views/settings-mi.js";
 import { SourcesSection, TracksSection, DownloadsSection } from "/app/views/settings-sources.js";
+import { UpdateSection } from "/app/views/settings-update.js";
 
 // 设置中心。桌面（≥860px）：左菜单常驻 + 右内容区双栏，无需来回跳转；
 // 窄屏：保持「分组菜单 → 子页」两级（移动端设置 App 范式）。
@@ -25,12 +26,14 @@ export const SettingsView = {
     const summary = ref({});
 
     async function loadSummary() {
-      const [mi, devices, plugins, config, downloads] = await Promise.all([
+      const [mi, devices, plugins, config, downloads, info] = await Promise.all([
         api("/mi/status").catch(() => null),
         api("/devices").catch(() => null),
         api("/sources/lx-plugins").catch(() => null),
         api("/config").catch(() => null),
         api("/downloads").catch(() => null),
+        // 只取本地版本号：菜单摘要不打 GitHub，免得进设置页就吃限频。
+        api("/system/info").catch(() => null),
       ]);
       const defaultDevice = (devices?.devices || []).find((d) => d.isDefault);
       summary.value = {
@@ -45,6 +48,7 @@ export const SettingsView = {
         tracks: `${config?.manualTracks?.length ?? 0} 首`,
         config: config ? `${config.defaultQuality} · ${STRATEGY_LABELS[config.searchStrategy] || ""}` : "",
         diag: "",
+        update: info?.version ? `v${info.version}` : "",
         security: "",
       };
     }
@@ -156,6 +160,10 @@ const GROUPS = [
       { key: "config", icon: Icons.sliders, label: "运行配置" },
       { key: "diag", icon: Icons.pulse, label: "链路诊断" },
     ],
+  },
+  {
+    title: "系统",
+    items: [{ key: "update", icon: Icons.refresh, label: "关于与更新" }],
   },
   {
     title: "安全",
@@ -620,5 +628,6 @@ const SECTION_COMPONENTS = {
   tracks: TracksSection,
   config: ConfigSection,
   diag: DiagSection,
+  update: UpdateSection,
   security: SecuritySection,
 };

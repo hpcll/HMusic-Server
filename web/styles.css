@@ -1208,6 +1208,32 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 .section-body { display: grid; gap: 16px; }
 
+/* 关于与更新：新版块与升级日志。日志/Release notes 是原样文本，
+   用等宽 + 可滚动的块承载，避免长行把卡片撑开。 */
+.update-found {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+  justify-items: start;
+}
+.log-block {
+  margin: 0;
+  width: 100%;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* 提示条：警示色左线 + 面板底，承载「状态异常 + 去处理」的轻量通知 */
 .notice-bar {
   display: flex;
