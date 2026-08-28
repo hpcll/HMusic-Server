@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 后续变更将在此记录。
+
+## 0.2.1 - 2026-08-28
+
 - 修复 Docker 升级守护 `hmusic-updater` 无限重启：compose 曾给 watchtower 传了它不存在的
   `--http-api-port`，参数解析失败即退出，被 `restart: unless-stopped` 反复拉起。守护改用桥接网络
   加 `127.0.0.1:8666:8080` 端口映射对齐服务端调用地址，镜像固定到 `containrrr/watchtower:1.7.1`。
@@ -11,6 +15,8 @@
 - 401 响应保留 `@fastify/jwt` 的原始错误 code，`GET /api/v1/auth/status` 在校验失败时返回
   `authError`；反向代理到公网时据此区分「凭据没送到」和「凭据被拒」。
 - 增加反向代理与公网访问部署说明，含 Nginx 最小配置、登录报错对照表和自查命令。
+- 升级提示：`hmusic-updater` 的修复在宿主机的 `docker-compose.yml` 里，只拉新镜像不生效。
+  Docker 部署请在安装目录执行 `bash install.sh --update`；守护崩溃循环期间 App 内的一键升级本就不可用。
 
 ## 0.2.0 - 2026-08-26
 
