@@ -15,6 +15,13 @@ const tokenParamsSchema = z.object({
   token: z.string().min(1),
 });
 
+// 转给上游的固定 UA：音源直链大多落在第三方 CDN 上，那些站点按 User-Agent 放行——
+// 把播放器自报的 UA（ExoPlayer/x、AVPlayer、Dalvik…）原样转出去常被判成非法客户端
+// 直接 403/302 到错误页，症状恰好是「网页端能播、App 点了就失败」：浏览器 <audio>
+// 送的是浏览器 UA 顺利过关。这里统一送浏览器 UA，不再透传客户端 UA。
+const upstreamUserAgent =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+
 const forwardedHeaders = [
   "accept-ranges",
   "cache-control",
@@ -41,9 +48,7 @@ export async function proxyRoutes(app: FastifyInstance): Promise<void> {
         redirect: "follow",
         signal: controller.signal,
         headers: {
-          "User-Agent":
-            request.headers["user-agent"] ||
-            "Mozilla/5.0 HMusic-Server-Audio-Proxy",
+          "User-Agent": upstreamUserAgent,
           ...(request.headers.range ? { Range: request.headers.range } : {}),
         },
       });
