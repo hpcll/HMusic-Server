@@ -130,7 +130,7 @@ async function searchQQ(query: string, page: number): Promise<HMusicTrack[]> {
         album = String(song.album.name ?? "");
         const pmid = String(song.album.pmid ?? song.album.mid ?? "");
         if (pmid) {
-          coverUrl = `https://y.gtimg.cn/music/photo_new/T002R300x300M000${pmid}.jpg`;
+          coverUrl = `https://y.gtimg.cn/music/photo_new/T002R500x500M000${pmid}.jpg`;
         }
       }
 

@@ -175,8 +175,8 @@ async function fetchAppleEntries(feedUrl: string): Promise<ChartEntry[]> {
       rank: index + 1,
       title: song.name!,
       artist: song.artistName!,
-      // RSS 给的是 100x100 缩略图地址，换成 300x300 更配大列表。
-      coverUrl: song.artworkUrl100?.replace("100x100", "300x300"),
+      // RSS 给的是 100x100 缩略图地址；600x600 配榜单 hero/详情的大图展示。
+      coverUrl: song.artworkUrl100?.replace("100x100", "600x600"),
     }));
 }
 

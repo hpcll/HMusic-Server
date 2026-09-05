@@ -284,7 +284,7 @@ export function parseQQSong(song: any): HMusicTrack | undefined {
     .join("/");
   const albumMid = String(song.albummid ?? song.albumMid ?? "");
   const coverUrl = albumMid
-    ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${albumMid}.jpg`
+    ? `https://y.gtimg.cn/music/photo_new/T002R500x500M000${albumMid}.jpg`
     : undefined;
   return buildTrack({
     source: "tx",
@@ -497,9 +497,11 @@ function parseNeteaseSong(song: any): HMusicTrack | undefined {
     .filter(Boolean)
     .join("/");
   const album = song.al ?? song.album;
+  // 网易 CDN 支持 ?param=WxH 缩放；榜单大卡/播放页都要放到 500 逻辑像素级，
+  // 原始 picUrl 不带参数时补 500y500，带参数的统一替换（2026-09-05 封面清晰度）。
   const coverUrl =
     album && typeof album === "object" && album.picUrl
-      ? String(album.picUrl)
+      ? `${String(album.picUrl).split("?")[0]}?param=500y500`
       : undefined;
   const durationMs = toDurationMs(song.dt ?? song.duration, true);
   return buildTrack({
