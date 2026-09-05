@@ -19,6 +19,7 @@ import { proxyRoutes } from "./modules/proxy/proxy.routes.js";
 import { queueRoutes } from "./modules/queue/queue.routes.js";
 import { searchRoutes } from "./modules/search/search.routes.js";
 import { sourcesRoutes } from "./modules/sources/sources.routes.js";
+import { spotifyRoutes } from "./modules/spotify/spotify.routes.js";
 import { statsRoutes } from "./modules/stats/stats.routes.js";
 import { systemRoutes } from "./modules/system/system.routes.js";
 import { webRoutes } from "./modules/web/web.routes.js";
@@ -70,6 +71,7 @@ export async function buildApp() {
   await app.register(playlistsRoutes, { prefix: "/api/v1/playlists" });
   await app.register(lyricsRoutes, { prefix: "/api/v1/tracks" });
   await app.register(chartsRoutes, { prefix: "/api/v1/charts" });
+  await app.register(spotifyRoutes, { prefix: "/api/v1/spotify" });
   await app.register(statsRoutes, { prefix: "/api/v1/stats" });
   await app.register(downloadsRoutes, { prefix: "/api/v1/downloads" });
   await app.register(libraryRoutes, { prefix: "/api/v1/library" });
