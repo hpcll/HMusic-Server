@@ -4,7 +4,11 @@ import { requireAuth } from "../../shared/auth.js";
 import type { HMusicTrack } from "../../shared/contracts.js";
 import { AppError } from "../../shared/errors.js";
 import { playTrack } from "../playback/playback.service.js";
-import { addQueueTrack, replaceQueue } from "../queue/queue.service.js";
+import {
+  addQueueTrack,
+  getQueueRevision,
+  replaceQueue,
+} from "../queue/queue.service.js";
 import { searchTracks } from "../search/search.service.js";
 import { getChart, listCharts } from "./charts.service.js";
 
@@ -99,8 +103,8 @@ async function matchChartEntry(entry: {
 }
 
 // Apple 榜整榜播放：从 startIndex 起顺序匹配，第一首命中即替换队列开播；
-// 其余条目由后台任务逐条匹配追加（保持榜单顺序）。期间用户再次整榜播放会
-// 替换队列并作废本任务；其它队列操作与追加并存（追加是尽力而为的补齐）。
+// 其余条目由后台任务逐条匹配追加（保持榜单顺序）。用户再次整榜播放、
+// 替换或清空队列会作废本任务，避免旧榜单追加到 Spotify 等新队列中。
 async function playChartBySearch(
   entries: Array<{ title: string; artist: string }>,
   body: { startIndex?: number; deviceId?: string },
@@ -116,8 +120,18 @@ async function playChartBySearch(
 
   let firstTrack: HMusicTrack | undefined;
   let firstAt = -1;
+  let queueRevision = getQueueRevision();
+  const isCurrent = () =>
+    seq === chartBackfillSeq && queueRevision === getQueueRevision();
   for (let i = startIndex; i < entries.length; i++) {
     firstTrack = await matchChartEntry(entries[i]!);
+    if (!isCurrent()) {
+      throw new AppError(
+        "CHART_PLAY_CANCELLED",
+        "榜单播放请求已被新的队列操作取消",
+        409,
+      );
+    }
     if (firstTrack) {
       firstAt = i;
       break;
@@ -131,18 +145,24 @@ async function playChartBySearch(
     );
   }
 
-  const queue = await replaceQueue({ tracks: [firstTrack], currentIndex: 0 });
+  const replacingQueue = replaceQueue({
+    tracks: [firstTrack],
+    currentIndex: 0,
+  });
+  queueRevision = getQueueRevision();
+  const queue = await replacingQueue;
   const playback = await playTrack({
     track: firstTrack,
     deviceId: body.deviceId,
     queueIndex: 0,
+    isCurrent,
   });
 
   void (async () => {
     for (let i = firstAt + 1; i < entries.length; i++) {
-      if (seq !== chartBackfillSeq) return;
+      if (!isCurrent()) return;
       const track = await matchChartEntry(entries[i]!);
-      if (seq !== chartBackfillSeq) return;
+      if (!isCurrent()) return;
       if (!track) continue;
       try {
         await addQueueTrack(track);

@@ -9,6 +9,7 @@ import { QueueView } from "/app/views/queue.js";
 import { PlaylistsView } from "/app/views/playlists.js";
 import { LibraryView } from "/app/views/library.js";
 import { ChartsView } from "/app/views/charts.js";
+import { SpotifyView } from "/app/views/spotify.js";
 import { StatsView } from "/app/views/stats.js";
 import { SettingsView } from "/app/views/settings.js";
 import { renderDownloadPicker } from "/app/download.js";
@@ -281,6 +282,7 @@ const routes = {
   playlists: { component: PlaylistsView, requiresAuth: true, label: "歌单", icon: Icons.playlists },
   library: { component: LibraryView, requiresAuth: true, label: "曲库", icon: Icons.library },
   charts: { component: ChartsView, requiresAuth: true, label: "榜单", icon: Icons.charts },
+  spotify: { component: SpotifyView, requiresAuth: true, label: "Spotify", icon: Icons.spotify },
   stats: { component: StatsView, requiresAuth: true, label: "统计", icon: Icons.stats },
   settings: { component: SettingsView, requiresAuth: true, label: "设置", icon: Icons.settings },
   login: { component: LoginView, requiresAuth: false },
@@ -325,7 +327,7 @@ window.addEventListener("hashchange", applyRoute);
 // ===== 根组件 =====
 // 桌面：左侧固定 sidebar（品牌 / 导航 / mini 播放状态 / 用户）+ 右侧内容区。
 // 窄屏（<860px）：sidebar 隐藏，回退为顶栏 + 底部导航（CSS 媒体查询切换）。
-const SIDEBAR_ITEMS = ["player", "search", "queue", "playlists", "library", "charts", "stats", "settings"];
+const SIDEBAR_ITEMS = ["player", "search", "queue", "playlists", "library", "charts", "spotify", "stats", "settings"];
 // 移动底栏 6 tab：「播放」放首位，其图标即迷你播放指示器（封面 + 进度环 +
 // 状态徽章）——对齐 Flutter app _PlayTabIcon 的方案：mini player 不做横条，
 // 入口就是 tab 本身。队列窄屏入口在播放页进度行末的队列键。

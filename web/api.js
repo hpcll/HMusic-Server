@@ -46,8 +46,12 @@ export async function api(path, options = {}) {
 
   const text = await response.text();
   const payload = text ? safeJson(text) : undefined;
+  // Spotify 网页会话与 HMusic 管理员登录独立；上游 Cookie 失效只需重新绑定。
+  const spotifySessionExpired = response.status === 401
+    && path.startsWith("/spotify/")
+    && payload?.error?.code === "SPOTIFY_SESSION_INVALID";
 
-  // 401 统一视为登录失效，清 token 并广播——main.js 监听后跳登录页，
+  // HMusic 的 401 视为登录失效，清 token 并广播——main.js 监听后跳登录页，
   // 否则页面停在原地装死，点什么都只弹"登录已失效"。
   // 但只有「本来带了 token」的请求才算会话失效：登录/首次创建管理员这种
   // 不带 token 的请求收到 401，说的是凭据本身不对（见 describeFailure）。
@@ -57,7 +61,7 @@ export async function api(path, options = {}) {
       payload?.error?.code || "(响应里没有 HMusic 错误信封)",
       payload?.error?.message || "",
     );
-    if (token) {
+    if (token && !spotifySessionExpired) {
       clearToken();
       window.dispatchEvent(new Event("hmusic:unauthorized"));
     }
@@ -70,7 +74,9 @@ export async function api(path, options = {}) {
       (response.status === 401 ? "UNAUTHORIZED" : "REQUEST_FAILED");
     throw new ApiError(
       code,
-      describeFailure(response.status, code, err, Boolean(token)),
+      spotifySessionExpired
+        ? err.message || "Spotify 登录已失效，请重新绑定"
+        : describeFailure(response.status, code, err, Boolean(token)),
       response.status,
       err?.details,
     );

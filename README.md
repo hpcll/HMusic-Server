@@ -137,6 +137,47 @@ HMusic App 与服务端共享当前 API 契约。服务端保留旧兼容入口�
 
 `POST /api/v1/playback/speak`（body: `{ "text": "...", "deviceId": "..." }`）可让小爱音箱语音播报一段文字。机型在内置 TTS 表内（`LX06`、`L05B/L05C`、`X08E`、`OH2/OH2P` 等）时走 miio 域 `miotspec/action`（需登录时留下的 passToken 静默换 `sid=xiaomiio` 会话）；表外机型回退 MiNA ubus `mibrain/text_to_speech` → `player_play_tts`。运行配置里的 `announceTracks` 开关（默认关）可让音箱开播前先播报「即将播放 XX」。
 
+## Spotify 个人歌单（实验性）
+
+Spotify 接入采用个人网页会话：登录服务器电脑上的 Spotify 网页版后自动读取 `sp_dc`，
+服务端通过 Web Player 的 Pathfinder 私有接口读取个人常听曲目和歌单，再通过 HMusic
+已配置的音源搜索匹配播放。`recommendations` 对应个人 Top Tracks，默认读取最近约四周的常听曲目。
+该通道依赖 Spotify 网页 token、client-token 接口及社区维护的 TOTP 密钥，服务端需要能够访问
+Spotify 和 GitHub；Pathfinder 属于网页端私有接口，Spotify 更新网页后可能需要重新适配。
+
+Web 管理页已提供 Spotify 入口：桌面点击侧栏 **Spotify**，手机可从 **歌单 → Spotify**
+或 **设置 → Spotify** 进入，也可直接打开 `http://<server-ip>:6650/app/#/spotify`。
+点击“登录 Spotify”后，服务端会在服务器电脑上打开独立的官方登录窗口；完成登录后会自动绑定，
+无需手工复制 Cookie。手动 `sp_dc` 导入仍保留在高级选项中。
+
+绑定后可切换常听曲目的时间范围、翻页浏览歌单，并选择 HMusic 播放设备。
+常听曲目的“播放本页”播放当前页，歌单支持整单播放或从指定曲目开始。
+Spotify 会话失效时只需在该页重新绑定，不会退出 HMusic 登录。
+
+以下接口前缀均为 `/api/v1/spotify`，需要 HMusic 的 `Authorization: Bearer <accessToken>`：
+
+| 方法与路径 | 用途 |
+| --- | --- |
+| `POST /session` | 提交 `{ "spDc": "YOUR_SP_DC_COOKIE_VALUE" }` 绑定账号；填写 Cookie 的值 |
+| `GET /session` / `DELETE /session` | 查看绑定状态 / 解除绑定 |
+| `GET /recommendations` | 常听曲目，支持 `timeRange`、`limit`、`offset` |
+| `GET /playlists` | 歌单列表，支持 `limit`、`offset` |
+| `GET /playlists/:id/tracks` | 歌单曲目，支持 `limit`、`offset` |
+| `POST /recommendations/play` | 播放常听曲目，支持 `timeRange`、`limit`、`offset`、`startIndex`、`deviceId` |
+| `POST /playlists/:id/play` | 分页读取完整歌单并播放，支持 `startIndex`、`deviceId` |
+
+列表响应保留 `tracks` / `playlists` 字段，并返回 `limit`、`offset`、`total`、`nextOffset`；
+将 `nextOffset` 作为下一次请求的 `offset`，为 `null` 表示没有下一页。下架曲目、本地文件和
+播客会被过滤，因此展示数量可能小于上游 `total`。`startIndex` 从零开始，按过滤后的曲目列表计数；
+常听曲目播放的索引相对于所请求的页面，整单播放的索引相对于完整歌单。
+
+播放匹配会校验歌名和歌手。第一首匹配成功后立即返回，`matched: 1` 表示此时确认入队的一首；
+后续曲目及页面在后台继续匹配，可通过 `/api/v1/queue` 查看结果。发起新的 Spotify 播放请求、
+清空或替换队列、解除绑定都会停止旧任务，尚在解析的首曲也不会继续开播。
+Cookie 加密保存，旧版明文会话首次读取时自动迁移；删除 HMusic 账号同时清除 Spotify 缓存和未完成任务。
+API 授权失效会刷新一次 token，并发查询复用刷新结果，确认失效后清除绑定；
+资源权限不足返回 `SPOTIFY_FORBIDDEN`，不会误报账号退出。
+
 ## 手动安装（高级）
 
 ```bash

@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { resetPlaybackStateForAccountDeletion } from "../playback/playback.service.js";
 import { resetQueueForAccountDeletion } from "../queue/queue.service.js";
+import { resetSpotifyStateForAccountDeletion } from "../spotify/spotify.service.js";
+import { stopSpotifyLogin } from "../spotify/spotify-login.service.js";
 import {
   changePassword,
   deleteAccount,
@@ -90,8 +92,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const payload = request.user as { sub: string };
     const body = deleteAccountSchema.parse(request.body ?? {});
     await deleteAccount(payload.sub, body.password);
+    resetSpotifyStateForAccountDeletion();
     resetPlaybackStateForAccountDeletion();
     resetQueueForAccountDeletion();
+    await stopSpotifyLogin();
     return { deleted: true };
   });
 }

@@ -139,6 +139,8 @@ export type PlayUrlInput = {
   durationMs?: number;
   positionMs?: number;
   queueIndex?: number;
+  // 整单播放沿用调用方的取消条件，覆盖队列、会话和任务变更。
+  isCurrent?: () => boolean;
 };
 
 export type PlayTrackInput = {
@@ -149,11 +151,13 @@ export type PlayTrackInput = {
   durationMs?: number;
   positionMs?: number;
   queueIndex?: number;
+  isCurrent?: () => boolean;
 };
 
 export async function playTrack(
   input: PlayTrackInput,
 ): Promise<HMusicPlaybackState> {
+  requireCurrentPlayback(input.isCurrent);
   if (input.url) {
     return playUrl({
       url: input.url,
@@ -162,6 +166,7 @@ export async function playTrack(
       durationMs: input.durationMs,
       positionMs: input.positionMs,
       queueIndex: input.queueIndex,
+      isCurrent: input.isCurrent,
     });
   }
 
@@ -175,7 +180,8 @@ export async function playTrack(
 
   // 本地文件优先：曲库（扫描/上传/下载统一视图）先查，历史下载记录兜底。
   // 零解析耗时、彻底免疫直链过期。
-  const localUrl = getLibraryAudioUrl(input.track) ?? getLocalAudioUrl(input.track);
+  const localUrl =
+    getLibraryAudioUrl(input.track) ?? getLocalAudioUrl(input.track);
   if (localUrl) {
     return playUrl({
       url: localUrl,
@@ -184,6 +190,7 @@ export async function playTrack(
       durationMs: input.durationMs ?? input.track.durationMs,
       positionMs: input.positionMs,
       queueIndex: input.queueIndex,
+      isCurrent: input.isCurrent,
     });
   }
 
@@ -199,13 +206,22 @@ export async function playTrack(
     durationMs: input.durationMs ?? resolved.track.durationMs,
     positionMs: input.positionMs,
     queueIndex: input.queueIndex,
+    isCurrent: input.isCurrent,
   });
+}
+
+function requireCurrentPlayback(isCurrent?: () => boolean): void {
+  if (isCurrent && !isCurrent()) {
+    throw new AppError("PLAYBACK_CANCELLED", "播放请求已取消", 409);
+  }
 }
 
 export async function playUrl(
   input: PlayUrlInput,
 ): Promise<HMusicPlaybackState> {
+  requireCurrentPlayback(input.isCurrent);
   const target = await resolveTargetDevice(input.deviceId);
+  requireCurrentPlayback(input.isCurrent);
   const playbackUrl = createAudioProxyUrl(input.url);
   lastResolvedAt = Date.now();
   // 新曲开播重置设备位置基准：旧曲曲末的 prev + 新曲曲头的回读位置
@@ -227,17 +243,23 @@ export async function playUrl(
   ) {
     try {
       await sendPlayerOperation(previousId, "pause");
+      requireCurrentPlayback(input.isCurrent);
       await sendPlayerOperation(previousId, "stop");
     } catch {
       // 旧设备失联不阻断
     }
   }
   // 本机播放：不发小米指令，服务端只记账，音频由浏览器 <audio> 拉 streamUrl。
+  requireCurrentPlayback(input.isCurrent);
   if (!isLocal) {
     await sendPlayerOperation(target.id, "pause");
+    requireCurrentPlayback(input.isCurrent);
     await sendPlayerOperation(target.id, "stop");
+    requireCurrentPlayback(input.isCurrent);
     await delay(500);
+    requireCurrentPlayback(input.isCurrent);
     await announceTrackIfEnabled(target, input.track);
+    requireCurrentPlayback(input.isCurrent);
     await sendDevicePlayUrl({
       deviceId: target.id,
       hardware: target.type,
@@ -247,6 +269,7 @@ export async function playUrl(
     });
   }
 
+  requireCurrentPlayback(input.isCurrent);
   playbackState = {
     ...playbackState,
     deviceId: target.id,
@@ -943,7 +966,10 @@ function scheduleAutoNext(input: {
   autoNextSeq = input.seq;
   autoNextDurationMs = input.durationMs;
   autoNextStartMs = input.startAnchorMs;
-  const delayMs = Math.max(1, Math.round(input.remainingMs) + AUTO_NEXT_TAIL_MS);
+  const delayMs = Math.max(
+    1,
+    Math.round(input.remainingMs) + AUTO_NEXT_TAIL_MS,
+  );
   autoNextTimer = setTimeout(() => {
     void onAutoNextFired(input.seq);
   }, delayMs);

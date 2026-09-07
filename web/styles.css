@@ -1140,6 +1140,92 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .pl-actions { display: flex; gap: 6px; }
 .detail-head { display: flex; align-items: center; justify-content: space-between; }
 
+/* ============ Spotify ============ */
+.spotify-view .view-head { margin-bottom: 0; gap: var(--sp-3); }
+.spotify-title { display: flex; align-items: center; gap: var(--sp-3); }
+.spotify-title .badge { margin-left: 0; white-space: nowrap; }
+.spotify-content, .spotify-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+.spotify-account { padding: var(--sp-5); gap: var(--sp-4); }
+.spotify-account-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.spotify-mark { color: var(--accent); }
+.spotify-account-icon {
+  display: grid; place-items: center;
+  width: 44px; height: 44px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+.spotify-account-icon svg { width: 28px; height: 28px; }
+.spotify-account-info { min-width: 0; }
+.spotify-account-info .card-title { margin: 0; font-size: var(--fs-lg); }
+.spotify-account-info p { margin: var(--sp-1) 0 0; }
+.spotify-status {
+  display: inline-flex; align-items: center;
+  color: var(--muted-2); font-size: var(--fs-sm); white-space: nowrap;
+}
+.spotify-status.connected { color: var(--accent); }
+.spotify-bind-form { display: grid; gap: var(--sp-3); min-width: 0; }
+.spotify-login-flow { display: grid; gap: var(--sp-2); min-width: 0; }
+.spotify-login-flow p { margin: 0; }
+.spotify-login-progress { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-md); }
+.spotify-login-progress .spinner { width: 20px; height: 20px; flex: none; }
+.spotify-manual-toggle { justify-self: start; padding: var(--sp-1) 0; font-size: var(--fs-sm); }
+.spotify-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.spotify-cookie-help { font-size: var(--fs-sm); color: var(--muted-2); overflow-wrap: anywhere; }
+.spotify-cookie-help summary { cursor: pointer; padding: var(--sp-1) 0; }
+.spotify-cookie-help ol { margin: var(--sp-2) 0 0; padding-left: var(--sp-5); }
+.spotify-cookie-help li + li { margin-top: var(--sp-2); }
+.spotify-cookie-help a { color: var(--text-strong); text-underline-offset: 3px; }
+.spotify-toolbar, .spotify-pagination {
+  display: flex; flex-wrap: wrap;
+  align-items: center; justify-content: space-between;
+  gap: var(--sp-3); min-width: 0;
+}
+.spotify-tabs .tab { padding: var(--sp-2) var(--sp-4); white-space: nowrap; }
+.spotify-select {
+  display: flex; align-items: center; gap: var(--sp-2);
+  min-width: 0; font-size: var(--fs-sm); color: var(--muted-2); white-space: nowrap;
+}
+.spotify-select select { width: auto; min-width: 0; max-width: 220px; font-size: var(--fs-md); }
+.spotify-view .primary-btn svg, .spotify-view .secondary-btn svg { width: 16px; height: 16px; flex: none; }
+.spotify-view .danger-btn:disabled { opacity: 0.5; cursor: default; }
+.spotify-pagination .spotify-actions { margin-left: auto; }
+.spotify-duration { flex: none; color: var(--muted-2); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.spotify-cover { position: relative; overflow: hidden; }
+.spotify-cover svg { width: 20px; height: 20px; }
+.spotify-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.spotify-playlist-heading { display: flex; align-items: center; gap: var(--sp-4); }
+.spotify-playlist-heading .spotify-cover { width: 64px; height: 64px; }
+.spotify-playlist-title { margin: 0; font-size: var(--fs-lg); color: var(--text-strong); overflow-wrap: anywhere; }
+.spotify-playlist-heading p { margin: var(--sp-1) 0 0; }
+.spotify-entry, .spotify-playlist {
+  width: 100%; min-width: 0; font: inherit; text-align: left;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+}
+.spotify-entry .pl-meta, .spotify-playlist .pl-meta { display: grid; gap: var(--sp-1); }
+.spotify-chevron { display: flex; color: var(--muted); }
+.spotify-chevron svg { width: 16px; height: 16px; }
+.spotify-play-hint { margin: 0; font-size: var(--fs-sm); color: var(--muted-2); }
+.spotify-view .notice-bar { overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .spotify-account { padding: var(--sp-4); }
+  .spotify-account-head { grid-template-columns: 44px minmax(0, 1fr); }
+  .spotify-status { grid-column: 2; }
+  .spotify-tabs { width: 100%; }
+  .spotify-device { width: 100%; }
+  .spotify-device select { flex: 1; max-width: none; }
+  .spotify-pagination { gap: var(--sp-2); }
+}
+
 /* ============ 设置中心 ============ */
 /* 桌面：左菜单常驻 + 右内容区双栏；窄屏：菜单 → 子页两级 */
 .settings-grid {

@@ -10,6 +10,12 @@ import { kvGet, kvSet } from "../../db/kv.js";
 const QUEUE_KV_KEY = "queue.snapshot";
 
 let queue: HMusicQueue = restoreQueue();
+let queueRevision = 0;
+
+// 只有整队替换、清空和账户重置会作废后台任务；追加和切歌保留当前任务。
+export function getQueueRevision(): number {
+  return queueRevision;
+}
 
 function restoreQueue(): HMusicQueue {
   const fallback: HMusicQueue = {
@@ -40,6 +46,7 @@ function persistQueue(): void {
 
 // 账户删除时重置内存队列（不落盘——调用方随后会清空 kv）。
 export function resetQueueForAccountDeletion(): void {
+  queueRevision += 1;
   queue = {
     sessionId: "default",
     items: [],
@@ -63,6 +70,7 @@ export async function replaceQueue(input: {
     input.tracks.length,
   );
 
+  queueRevision += 1;
   queue = {
     ...queue,
     items: input.tracks.map((track) => createQueueItem(track)),
@@ -165,6 +173,7 @@ export function syncQueuePlaybackTrack(
 }
 
 export async function clearQueue(): Promise<HMusicQueue> {
+  queueRevision += 1;
   queue = {
     ...queue,
     items: [],

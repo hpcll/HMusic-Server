@@ -22,11 +22,11 @@ export const SettingsView = {
   setup() {
     const mq = window.matchMedia(DESKTOP_QUERY);
     const isDesktop = ref(mq.matches);
-    const sectionKey = computed(() => ALL_ITEMS.some(i => i.key === router.params.s) ? router.params.s : null);
+    const sectionKey = computed(() => ALL_ITEMS.some(i => !i.route && i.key === router.params.s) ? router.params.s : null);
     const summary = ref({});
 
     async function loadSummary() {
-      const [mi, devices, plugins, config, downloads, info] = await Promise.all([
+      const [mi, devices, plugins, config, downloads, info, spotify] = await Promise.all([
         api("/mi/status").catch(() => null),
         api("/devices").catch(() => null),
         api("/sources/lx-plugins").catch(() => null),
@@ -34,6 +34,7 @@ export const SettingsView = {
         api("/downloads").catch(() => null),
         // 只取本地版本号：菜单摘要不打 GitHub，免得进设置页就吃限频。
         api("/system/info").catch(() => null),
+        api("/spotify/session").catch(() => null),
       ]);
       const defaultDevice = (devices?.devices || []).find((d) => d.isDefault);
       summary.value = {
@@ -50,11 +51,13 @@ export const SettingsView = {
         diag: "",
         update: info?.version ? `v${info.version}` : "",
         security: "",
+        spotify: spotify ? spotify.loggedIn ? "已绑定" : "未绑定" : "暂不可用",
       };
     }
 
-    function open(key) {
-      go("settings", { s: key });
+    function open(item) {
+      if (item.route) go(item.route);
+      else go("settings", { s: item.key });
     }
 
     function back() {
@@ -88,7 +91,7 @@ export const SettingsView = {
                 h("button", {
                   key: item.key,
                   class: ["menu-row", { active: isDesktop.value && (sectionKey.value || "mi") === item.key }],
-                  onClick: () => open(item.key),
+                  onClick: () => open(item),
                 }, [
                   h("span", { class: "menu-icon" }, item.icon()),
                   h("span", { class: "menu-label" }, item.label),
@@ -143,6 +146,7 @@ const GROUPS = [
     title: "账号与设备",
     items: [
       { key: "mi", icon: Icons.account, label: "小米账号" },
+      { key: "spotify", icon: Icons.spotify, label: "Spotify", route: "spotify" },
       { key: "devices", icon: Icons.speaker, label: "播放设备" },
     ],
   },

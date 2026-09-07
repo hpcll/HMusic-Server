@@ -69,6 +69,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
     if (libraryScanTimer) clearInterval(libraryScanTimer);
     stopPlaybackWatchdog();
-    void stopMdnsAdvertiser().finally(() => process.exit(0));
+    void app.close().finally(() => {
+      void stopMdnsAdvertiser().finally(() => process.exit(0));
+    });
   });
 }

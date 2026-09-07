@@ -234,6 +234,18 @@ export const PlaylistsView = {
         // 「已下载」「曲库」系统视图入口卡（非歌单——不可删、不占命名空间）。
         // 曲库卡兼作移动端唯一入口：底栏 6 tab 已满，对齐「已下载」的系统卡模式。
         h("div", { class: "playlist-grid" }, [
+          h("button", {
+            type: "button",
+            class: "playlist-card card spotify-entry",
+            onClick: () => go("spotify"),
+          }, [
+            h("span", { class: "pl-icon spotify-mark" }, Icons.spotify()),
+            h("span", { class: "pl-meta" }, [
+              h("span", { class: "pl-name" }, "Spotify"),
+              h("span", { class: "muted" }, "常听曲目与个人歌单"),
+            ]),
+            h("span", { class: "spotify-chevron" }, Icons.chevronRight()),
+          ]),
           h("div", {
             class: "playlist-card card",
             onClick: () => go("playlists", { view: "downloads" }),

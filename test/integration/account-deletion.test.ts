@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // 账户删除（App Store 合规）：物理清除全部数据，服务端回未初始化态。
 // 独立临时 DB，避免破坏 api-contract 主测试。
@@ -12,6 +12,7 @@ beforeAll(() => {
   process.env.HMUSIC_DATA_DIR = dataDir;
   process.env.HMUSIC_DATABASE_URL = path.join(dataDir, "hmusic.db");
   process.env.HMUSIC_JWT_SECRET = "delacct-test-secret";
+  process.env.HMUSIC_LOG_LEVEL = "silent";
   process.env.HMUSIC_PUBLIC_BASE_URL = "http://127.0.0.1:8090";
 });
 
@@ -34,6 +35,31 @@ describe("account deletion", () => {
       expect(setup.statusCode).toBe(200);
       const token = setup.json().accessToken as string;
       const headers = { authorization: `Bearer ${token}` };
+
+      // 先绑定 Spotify 并缓存 token，删号后新账号不能继续使用这些凭据。
+      const upstream = vi.fn(
+        async (input: string | URL | Request) =>
+          new Response(
+            JSON.stringify(
+              String(input).includes("raw.githubusercontent.com")
+                ? { "42": [11, 22, 33, 44] }
+                : {
+                    accessToken: "old-spotify-token",
+                    accessTokenExpirationTimestampMs: Date.now() + 3600_000,
+                    isAnonymous: false,
+                  },
+            ),
+            { headers: { "content-type": "application/json" } },
+          ),
+      );
+      vi.stubGlobal("fetch", upstream);
+      const linked = await app.inject({
+        method: "POST",
+        url: "/api/v1/spotify/session",
+        headers,
+        payload: { spDc: "old-spotify-cookie" },
+      });
+      expect(linked.statusCode).toBe(200);
 
       await app.inject({
         method: "POST",
@@ -92,7 +118,26 @@ describe("account deletion", () => {
       });
       expect(playlists.statusCode).toBe(200);
       expect(playlists.json().playlists).toEqual([]);
+      upstream.mockClear();
+      const spotifyStatus = await app.inject({
+        method: "GET",
+        url: "/api/v1/spotify/session",
+        headers: newHeaders,
+      });
+      expect(spotifyStatus.json()).toEqual({
+        loggedIn: false,
+        tokenExpiresAtMs: null,
+      });
+      const spotifyPlaylists = await app.inject({
+        method: "GET",
+        url: "/api/v1/spotify/playlists",
+        headers: newHeaders,
+      });
+      expect(spotifyPlaylists.statusCode).toBe(409);
+      expect(spotifyPlaylists.json().error.code).toBe("SPOTIFY_NOT_LINKED");
+      expect(upstream).not.toHaveBeenCalled();
     } finally {
+      vi.unstubAllGlobals();
       await app.close();
     }
   });
