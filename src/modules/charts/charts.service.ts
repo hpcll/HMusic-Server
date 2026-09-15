@@ -27,7 +27,13 @@ export type ChartSummary = {
   id: string;
   name: string;
   description: string;
-  kind: "family" | "netease" | "qq" | "apple";
+  kind:
+    | "family"
+    | "netease"
+    | "qq"
+    | "apple"
+    | "spotify-personal"
+    | "spotify-public";
 };
 
 export type Chart = ChartSummary & {
@@ -121,9 +127,9 @@ const APPLE_CHARTS: Array<ChartSummary & { feedUrl: string }> =
     feedUrl: `https://rss.marketingtools.apple.com/api/v2/${region}/music/most-played/50/songs.json`,
   }));
 
-// ===== 通用缓存：日更榜单 6 小时缓存足够，拉取失败回退过期缓存 =====
+// ===== 通用缓存：日更榜单按天缓存，拉取失败回退过期缓存 =====
 
-const CHART_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const CHART_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const chartCache = new Map<string, { fetchedAt: number; chart: Chart }>();
 
 async function cachedChart(
@@ -162,7 +168,9 @@ type AppleFeedSong = {
 };
 
 async function fetchAppleEntries(feedUrl: string): Promise<ChartEntry[]> {
-  const response = await fetch(feedUrl, { signal: AbortSignal.timeout(10_000) });
+  const response = await fetch(feedUrl, {
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!response.ok) {
     throw new Error(`Apple RSS ${response.status}`);
   }
@@ -245,13 +253,18 @@ async function fetchQQToplistSongs(
   };
   const data = await fetchJson("https://u.y.qq.com/cgi-bin/musicu.fcg", {
     method: "POST",
-    headers: { Referer: "https://y.qq.com/", "Content-Type": "application/json" },
+    headers: {
+      Referer: "https://y.qq.com/",
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   return asArray((data as any)?.toplist?.data?.songInfoList);
 }
 
-async function fetchQQToplistPeriod(topId: number): Promise<string | undefined> {
+async function fetchQQToplistPeriod(
+  topId: number,
+): Promise<string | undefined> {
   const body = {
     comm: { ct: 24, cv: 0 },
     toplists: {
@@ -262,7 +275,10 @@ async function fetchQQToplistPeriod(topId: number): Promise<string | undefined> 
   };
   const data = await fetchJson("https://u.y.qq.com/cgi-bin/musicu.fcg", {
     method: "POST",
-    headers: { Referer: "https://y.qq.com/", "Content-Type": "application/json" },
+    headers: {
+      Referer: "https://y.qq.com/",
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   const groups = asArray((data as any)?.toplists?.data?.group);
@@ -327,7 +343,10 @@ function buildFamilyChart(): Chart {
     .all();
 
   // 按曲目聚合次数，快照取最近一次播放的。
-  const grouped = new Map<string, { count: number; row: (typeof rows)[number] }>();
+  const grouped = new Map<
+    string,
+    { count: number; row: (typeof rows)[number] }
+  >();
   for (const row of rows) {
     const entry = grouped.get(row.trackKey);
     if (entry) entry.count += 1;
@@ -360,7 +379,12 @@ function safeParseTrack(json: string): HMusicTrack | undefined {
 
 // ===== 对外接口 =====
 
-function toSummary({ id, name, description, kind }: ChartSummary): ChartSummary {
+function toSummary({
+  id,
+  name,
+  description,
+  kind,
+}: ChartSummary): ChartSummary {
   return { id, name, description, kind };
 }
 
@@ -378,7 +402,9 @@ export async function getChart(id: string): Promise<Chart> {
 
   const neteaseDef = NETEASE_CHARTS.find((def) => def.id === id);
   if (neteaseDef) {
-    return cachedChart(neteaseDef, () => fetchNeteaseEntries(neteaseDef.playlistId));
+    return cachedChart(neteaseDef, () =>
+      fetchNeteaseEntries(neteaseDef.playlistId),
+    );
   }
   const qqDef = QQ_CHARTS.find((def) => def.id === id);
   if (qqDef) {

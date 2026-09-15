@@ -16,6 +16,10 @@ import {
 export const PlaylistsView = {
   setup() {
     const playlists = ref([]);
+    const spotifyPlaylists = ref([]);
+    const spotifyLoading = ref(false);
+    const spotifyError = ref("");
+    const spotifyConnected = ref(false);
     const detail = ref(null); // 当前路由对应的歌单详情数据
     const detailLoading = ref(false);
     const detailError = ref("");
@@ -28,6 +32,14 @@ export const PlaylistsView = {
     const loading = ref(true);
     const loadError = ref("");
 
+    function isSpotifyPlaylistId(id) {
+      return typeof id === "string" && id.startsWith("spotify:playlist:");
+    }
+
+    function spotifyId(id) {
+      return id.slice("spotify:playlist:".length);
+    }
+
     async function loadList() {
       loading.value = true;
       loadError.value = "";
@@ -39,6 +51,32 @@ export const PlaylistsView = {
       } finally {
         loading.value = false;
       }
+      void loadSpotifyList();
+    }
+
+    async function loadSpotifyList() {
+      spotifyLoading.value = true;
+      spotifyError.value = "";
+      try {
+        const status = await api("/spotify/session");
+        spotifyConnected.value = Boolean(status.loggedIn);
+        if (!spotifyConnected.value) {
+          spotifyPlaylists.value = [];
+          return;
+        }
+        const result = await api("/spotify/playlists?limit=50&offset=0");
+        spotifyPlaylists.value = (result.playlists || []).map((playlist) => ({
+          ...playlist,
+          id: `spotify:playlist:${playlist.id}`,
+          provider: "spotify",
+          readonly: true,
+        }));
+      } catch (error) {
+        spotifyPlaylists.value = [];
+        spotifyError.value = error.message || "Spotify 歌单暂时无法显示";
+      } finally {
+        spotifyLoading.value = false;
+      }
     }
 
     async function loadDetail(id) {
@@ -46,6 +84,25 @@ export const PlaylistsView = {
       detailLoading.value = true;
       detailError.value = "";
       try {
+        if (isSpotifyPlaylistId(id)) {
+          const remoteId = spotifyId(id);
+          const result = await api(`/spotify/playlists/${encodeURIComponent(remoteId)}/tracks?limit=100&offset=0`);
+          if (router.name === "playlists" && router.params.id === id) {
+            const summary = spotifyPlaylists.value.find((playlist) => playlist.id === id);
+            detail.value = {
+              id,
+              spotifyId: remoteId,
+              provider: "spotify",
+              readonly: true,
+              name: router.params.name || summary?.name || "Spotify 歌单",
+              coverUrl: router.params.cover || summary?.coverUrl || null,
+              tracksTotal: result.total || summary?.tracksTotal || 0,
+              items: result.tracks || [],
+              nextOffset: result.nextOffset ?? null,
+            };
+          }
+          return;
+        }
         // 单歌单接口的返回都包在 { playlist } 里。
         const result = await api(`/playlists/${id}`);
         if (router.name === "playlists" && router.params.id === id) {
@@ -146,7 +203,10 @@ export const PlaylistsView = {
     async function playPlaylist(id, startIndex = 0) {
       primeLocalAudio(); // 本机播放：手势内解锁 <audio>
       try {
-        await api(`/playlists/${id}/play`, { method: "POST", body: { startIndex } });
+        const path = isSpotifyPlaylistId(id)
+          ? `/spotify/playlists/${encodeURIComponent(spotifyId(id))}/play`
+          : `/playlists/${id}/play`;
+        await api(path, { method: "POST", body: { startIndex } });
         await refreshPlayback();
         toast("开始播放歌单", "success");
       } catch (error) {
@@ -161,6 +221,35 @@ export const PlaylistsView = {
           { method: "DELETE" },
         );
         detail.value = result.playlist;
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    }
+
+    async function loadMoreSpotifyTracks() {
+      const d = detail.value;
+      if (!d?.readonly || d.nextOffset === null || detailLoading.value) return;
+      detailLoading.value = true;
+      try {
+        const result = await api(`/spotify/playlists/${encodeURIComponent(d.spotifyId)}/tracks?limit=100&offset=${d.nextOffset}`);
+        if (router.name === "playlists" && router.params.id === d.id) {
+          d.items = [...d.items, ...(result.tracks || [])];
+          d.nextOffset = result.nextOffset ?? null;
+          d.tracksTotal = result.total || d.tracksTotal;
+        }
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        detailLoading.value = false;
+      }
+    }
+
+    async function downloadSpotifyTrack(track) {
+      try {
+        const result = await api(`/search?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`);
+        const found = (result.tracks || [])[0];
+        if (!found) throw new Error(`没找到可下载的「${track.title}」`);
+        openDownloadPicker(found);
       } catch (error) {
         toast(error.message, "error");
       }
@@ -227,6 +316,9 @@ export const PlaylistsView = {
             h("button", { class: "primary-btn", onClick: openCreate }, [
               Icons.plus(), "创建歌单",
             ]),
+            h("button", { class: "secondary-btn", onClick: () => go("spotify") }, [
+              Icons.spotify(), "Spotify 设置",
+            ]),
           ]),
         ]),
         createOpen.value ? renderCreateModal() : null,
@@ -234,18 +326,6 @@ export const PlaylistsView = {
         // 「已下载」「曲库」系统视图入口卡（非歌单——不可删、不占命名空间）。
         // 曲库卡兼作移动端唯一入口：底栏 6 tab 已满，对齐「已下载」的系统卡模式。
         h("div", { class: "playlist-grid" }, [
-          h("button", {
-            type: "button",
-            class: "playlist-card card spotify-entry",
-            onClick: () => go("spotify"),
-          }, [
-            h("span", { class: "pl-icon spotify-mark" }, Icons.spotify()),
-            h("span", { class: "pl-meta" }, [
-              h("span", { class: "pl-name" }, "Spotify"),
-              h("span", { class: "muted" }, "常听曲目与个人歌单"),
-            ]),
-            h("span", { class: "spotify-chevron" }, Icons.chevronRight()),
-          ]),
           h("div", {
             class: "playlist-card card",
             onClick: () => go("playlists", { view: "downloads" }),
@@ -277,30 +357,58 @@ export const PlaylistsView = {
           ? ErrorState({ message: loadError.value, onRetry: loadList })
           : loading.value
             ? LoadingState()
-            : playlists.value.length === 0
-              ? EmptyState({
-                  icon: Icons.playlists,
-                  title: "还没有歌单",
-                  hint: "创建一个，或粘贴分享链接导入",
-                })
-              : h("div", { class: "playlist-grid" },
-              playlists.value.map((p) =>
-                h("div", { key: p.id, class: "playlist-card card",
-                  onClick: () => go("playlists", { id: p.id }) }, [
-                  h("div", { class: "pl-icon" }, Icons.playlists()),
-                  h("div", { class: "pl-meta" }, [
-                    h("div", { class: "pl-name" }, p.name),
-                    h("div", { class: "muted" }, `${p.trackCount} 首`),
-                  ]),
-                  h("div", { class: "pl-actions" }, [
-                    h("button", { class: "icon-btn", title: "播放",
-                      onClick: (e) => { e.stopPropagation(); playPlaylist(p.id); } }, Icons.play()),
-                    h("button", { class: "icon-btn", title: "删除",
-                      onClick: (e) => deletePlaylist(p, e) }, Icons.close()),
-                  ]),
-                ]),
-              ),
-            ),
+            : h("section", { class: "playlist-section" }, [
+              h("div", { class: "chart-group-label" }, "本地歌单"),
+              playlists.value.length === 0
+                ? EmptyState({ icon: Icons.playlists, title: "还没有本地歌单", hint: "创建一个，或粘贴分享链接导入" })
+                : h("div", { class: "playlist-grid" }, playlists.value.map((p) =>
+                    h("div", { key: p.id, class: "playlist-card card",
+                      onClick: () => go("playlists", { id: p.id }) }, [
+                      h("div", { class: "pl-icon" }, Icons.playlists()),
+                      h("div", { class: "pl-meta" }, [
+                        h("div", { class: "pl-name" }, p.name),
+                        h("div", { class: "muted" }, `${p.trackCount} 首`),
+                      ]),
+                      h("div", { class: "pl-actions" }, [
+                        h("button", { class: "icon-btn", title: "播放",
+                          onClick: (e) => { e.stopPropagation(); playPlaylist(p.id); } }, Icons.play()),
+                        h("button", { class: "icon-btn", title: "删除",
+                          onClick: (e) => deletePlaylist(p, e) }, Icons.close()),
+                      ]),
+                    ]),
+                  )),
+              ]),
+        spotifyConnected.value || spotifyLoading.value || spotifyError.value
+          ? h("section", { class: "playlist-section spotify-playlist-section" }, [
+              h("div", { class: "chart-group-label" }, "Spotify 歌单"),
+              spotifyError.value
+                ? h("div", { class: "notice-bar error", role: "alert" }, [
+                    h("span", null, spotifyError.value),
+                    h("button", { class: "ghost-btn", onClick: loadSpotifyList }, "重试"),
+                  ])
+                : spotifyLoading.value
+                  ? LoadingState({ label: "正在读取 Spotify 歌单…" })
+                  : spotifyPlaylists.value.length === 0
+                    ? EmptyState({ icon: Icons.spotify, title: "Spotify 暂无歌单" })
+                    : h("div", { class: "playlist-grid" }, spotifyPlaylists.value.map((p) =>
+                        h("button", {
+                          type: "button", key: p.id, class: "playlist-card card spotify-playlist",
+                          onClick: () => go("playlists", { id: p.id, name: p.name, cover: p.coverUrl || "" }),
+                        }, [
+                          h("span", { class: "pl-icon spotify-mark" }, p.coverUrl
+                            ? h("img", { src: p.coverUrl, alt: "", loading: "lazy", referrerpolicy: "no-referrer" })
+                            : Icons.spotify()),
+                          h("span", { class: "pl-meta" }, [
+                            h("span", { class: "pl-name" }, p.name),
+                            h("span", { class: "muted" }, p.tracksTotal > 0
+                              ? `${p.tracksTotal} 首 · 远程只读`
+                              : "歌曲数点击后加载 · 远程只读"),
+                          ]),
+                          h("span", { class: "spotify-chevron" }, Icons.chevronRight()),
+                        ]),
+                      )),
+            ])
+          : null,
       ]);
     }
 
@@ -349,6 +457,7 @@ export const PlaylistsView = {
 
     function renderDetail() {
       const d = detail.value;
+      if (d?.readonly) return renderSpotifyDetail(d);
       const items = d?.items || [];
       return h("main", { class: "view playlist-detail" }, [
         h("div", { class: "detail-head" }, [
@@ -398,6 +507,55 @@ export const PlaylistsView = {
                       ),
                 ]
               : null,
+      ]);
+    }
+
+    function renderSpotifyDetail(d) {
+      const items = d.items || [];
+      return h("main", { class: "view playlist-detail" }, [
+        h("div", { class: "detail-head" }, [
+          h("button", { class: "secondary-btn", onClick: backToList }, "‹ 返回"),
+          h("button", { class: "secondary-btn", disabled: !items.length,
+            onClick: () => playPlaylist(d.id) }, "播放全部"),
+        ]),
+        h("div", { class: "spotify-playlist-heading" }, [
+          h("span", { class: "pl-icon spotify-mark" }, d.coverUrl
+            ? h("img", { src: d.coverUrl, alt: "", loading: "lazy", referrerpolicy: "no-referrer" })
+            : Icons.spotify()),
+          h("div", { class: "pl-meta" }, [
+            h("h2", { class: "view-title" }, d.name),
+            h("p", { class: "muted" }, `${items.length} / ${d.tracksTotal || items.length} 首 · Spotify 远程只读`),
+          ]),
+        ]),
+        detailError.value
+          ? ErrorState({ message: detailError.value, onRetry: () => loadDetail(d.id) })
+          : detailLoading.value && !items.length
+            ? LoadingState({ label: "Spotify 歌单加载中…" })
+            : !items.length
+              ? EmptyState({ icon: Icons.note, title: "歌单是空的" })
+              : h("ol", { class: "track-list track-cols" }, items.map((track, i) =>
+                  h("li", { key: `${track.id}:${i}`, class: "track-row" }, [
+                    h("div", { class: "queue-index" }, String(i + 1)),
+                    h("div", { class: "track-cover spotify-cover" }, [
+                      Icons.note(),
+                      track.coverUrl ? h("img", { src: track.coverUrl, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : null,
+                    ]),
+                    h("div", { class: "track-info", style: { cursor: "pointer" },
+                      onClick: () => playPlaylist(d.id, i) }, [
+                      h("div", { class: "track-title" }, track.title),
+                      h("div", { class: "track-artist" }, [track.artist || "未知歌手", track.album ? ` · ${track.album}` : ""]),
+                    ]),
+                    h("div", { class: "track-actions" }, [
+                      h("button", { class: "icon-btn", title: "播放", onClick: () => playPlaylist(d.id, i) }, Icons.play()),
+                      h("button", { class: "icon-btn", title: "下载到服务器", onClick: () => downloadSpotifyTrack(track) }, Icons.download()),
+                    ]),
+                  ]),
+                )),
+        d.nextOffset !== null && !detailError.value
+          ? h("div", { class: "load-more" }, [
+              h("button", { class: "secondary-btn", disabled: detailLoading.value, onClick: loadMoreSpotifyTracks }, detailLoading.value ? "加载中…" : "加载更多曲目"),
+            ])
+          : null,
       ]);
     }
 

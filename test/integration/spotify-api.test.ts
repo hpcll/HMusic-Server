@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
+import { AppError } from "../../src/shared/errors.js";
 import {
   afterAll,
   afterEach,
@@ -127,6 +128,92 @@ async function bind() {
 }
 
 describe("Spotify API", () => {
+  it("统一榜单目录按连接状态展示 Spotify，并支持商店版排除", async () => {
+    const list = (suffix = "") =>
+      app.inject({ method: "GET", url: `/api/v1/charts${suffix}`, headers });
+    const unlinked = await list();
+    expect(
+      unlinked
+        .json()
+        .charts.some((chart: { kind: string }) =>
+          chart.kind.startsWith("spotify"),
+        ),
+    ).toBe(false);
+    await bind();
+    const linked = await list();
+    expect(
+      linked
+        .json()
+        .charts.filter(
+          (chart: { kind: string }) => chart.kind === "spotify-personal",
+        ),
+    ).toHaveLength(3);
+    const store = await list("?includeSpotify=false");
+    expect(store.json()).toEqual(unlinked.json());
+    await spotify.clearSession();
+    expect((await list()).json()).toEqual(unlinked.json());
+  });
+
+  it("三个常听榜可直接读取预览，详情与播放复用同一份 Top 50", async () => {
+    await bind();
+    const calls: string[] = [];
+    apiResponse = (url) => {
+      calls.push(
+        `${url.searchParams.get("time_range")}:${url.searchParams.get("limit")}`,
+      );
+      return json({ items: [rawTrack], total: 1, next: null });
+    };
+    for (const period of ["short", "medium", "long"]) {
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/v1/charts/spotify-top-${period}`,
+        headers,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        kind: "spotify-personal",
+        entries: [{ rank: 1, title: "Song", artist: "Artist" }],
+      });
+    }
+    const second = await app.inject({
+      method: "GET",
+      url: "/api/v1/charts/spotify-top-short",
+      headers,
+    });
+    expect(second.statusCode).toBe(200);
+    const played = await app.inject({
+      method: "POST",
+      url: "/api/v1/charts/spotify-top-short/play",
+      headers,
+      payload: { deviceId: "local-browser" },
+    });
+    expect(played.statusCode).toBe(200);
+    expect(played.json()).toMatchObject({
+      matched: 1,
+      playback: { state: "playing", track: { title: "Song" } },
+    });
+    expect(calls).toEqual(["short_term:50", "medium_term:50", "long_term:50"]);
+  });
+
+  it("Spotify 失效不会让统一榜单返回代表 HMusic 登出的 401", async () => {
+    vi.spyOn(spotify, "topTracks").mockRejectedValue(
+      new AppError("SPOTIFY_SESSION_INVALID", "expired", 401),
+    );
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/charts/spotify-top-short",
+      headers,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe("SPOTIFY_SESSION_INVALID");
+    const status = await app.inject({
+      method: "GET",
+      url: "/api/v1/auth/status",
+      headers,
+    });
+    expect(status.json().authenticated).toBe(true);
+  });
+
   it.each([
     ["GET", "/session"],
     ["POST", "/session"],

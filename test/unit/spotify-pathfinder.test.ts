@@ -150,9 +150,34 @@ describe("Spotify Pathfinder", () => {
     expect(request[1]?.headers).toMatchObject({
       Authorization: "Bearer web-access-token",
       "Client-Token": "client-token",
-      "Spotify-App-Version": "1.3.1.46.g7d04e78c-development",
+      "Spotify-App-Version": "1.3.0.272.g0535e37-development",
       "App-Platform": "WebPlayer",
     });
+  });
+
+  it("半年常听使用 Spotify 当前的 MID_TERM 周期值", async () => {
+    const fetchMock = stubFetch([
+      () => jsonResponse({ "42": CIPHER }),
+      () => tokenResponse(),
+      () => clientTokenResponse(),
+      () =>
+        jsonResponse({
+          data: {
+            me: {
+              profile: {
+                topTracks: { totalCount: 0, items: [] },
+              },
+            },
+          },
+        }),
+    ]);
+
+    await svc.linkSession("pathfinder-cookie");
+    await svc.topTracks("medium_term", 25, 0);
+
+    const body = JSON.parse(String(fetchMock.mock.calls[3][1]?.body));
+    expect(body.variables.topArtistsInput.timeRange).toBe("MID_TERM");
+    expect(body.variables.topTracksInput.timeRange).toBe("MID_TERM");
   });
 
   it("解析个人歌单与歌单曲目", async () => {

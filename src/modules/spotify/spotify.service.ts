@@ -28,7 +28,7 @@ const TOKEN_URL = "https://open.spotify.com/api/token";
 const API_BASE = "https://api.spotify.com/v1";
 const PATHFINDER_URL = "https://api-partner.spotify.com/pathfinder/v2/query";
 const CLIENT_TOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken";
-const SPOTIFY_APP_VERSION = "1.3.1.46.g7d04e78c-development";
+const SPOTIFY_APP_VERSION = "1.3.0.272.g0535e37-development";
 const WEB_PLAYER_CLIENT_ID = "d8a5ed958d274c2e8ee717e6a4b0971d";
 const PATHFINDER_HASHES = {
   userTopContent:
@@ -68,7 +68,7 @@ export interface SpotifyTrackEntry {
 export interface SpotifyPlaylistSummary {
   id: string;
   name: string;
-  tracksTotal: number;
+  tracksTotal: number | null;
   coverUrl: string | null;
 }
 
@@ -89,6 +89,13 @@ let clientTokenCache: CachedClientToken | null = null;
 let sessionRevision = 0;
 let tokenRequest: { revision: number; promise: Promise<string> } | null = null;
 let clientTokenRequest: Promise<string> | null = null;
+// Spotify 的个人榜单和歌单目录按天更新；同一天复用结果可以显著减少
+// Pathfinder 请求，尤其避免打开榜单墙时重复触发限流。
+const CONTENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const contentCache = new Map<
+  string,
+  { expiresAt: number; promise: Promise<unknown> }
+>();
 
 export async function loadSession(): Promise<SpotifySession | null> {
   const row = db
@@ -142,6 +149,7 @@ export function resetSpotifyStateForAccountDeletion(): void {
   clientTokenCache = null;
   clientTokenRequest = null;
   secretsCache = null;
+  contentCache.clear();
 }
 
 export async function clearSession(): Promise<void> {
@@ -336,6 +344,7 @@ export async function linkSession(
   const revision = ++sessionRevision;
   tokenCache = null;
   clientTokenCache = null;
+  contentCache.clear();
   // 后台查询共享正在验证的新会话，避免再次刷新已过期的旧 Cookie。
   await trackTokenRequest(
     revision,
@@ -543,6 +552,8 @@ async function pathfinderQuery<T>(
           "Content-Type": "application/json;charset=UTF-8",
           "Spotify-App-Version": SPOTIFY_APP_VERSION,
           "App-Platform": "WebPlayer",
+          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+          Origin: "https://open.spotify.com",
           Referer: "https://open.spotify.com/",
           "User-Agent": USER_AGENT,
         },
@@ -581,6 +592,14 @@ async function pathfinderQuery<T>(
       throw new AppError("SPOTIFY_FORBIDDEN", "Spotify 未授权访问该资源", 403);
     }
     if (resp.status === 429) {
+      log.warn(
+        {
+          operationName,
+          retryAfter: resp.headers.get("retry-after"),
+          requestId: resp.headers.get("x-spotify-request-id"),
+        },
+        "Pathfinder 返回 429",
+      );
       const retryAfter = Number.parseInt(
         resp.headers.get("retry-after") ?? "",
         10,
@@ -588,20 +607,37 @@ async function pathfinderQuery<T>(
       const retryAfterMs = Number.isFinite(retryAfter)
         ? Math.max(1000, Math.min(retryAfter * 1000, 10 * 60 * 1000))
         : null;
+      let upstreamMessage: string | undefined;
+      try {
+        const text = await resp.clone().text();
+        if (text.length > 0 && text.length < 500) upstreamMessage = text;
+      } catch {
+        // ignore diagnostic body failures
+      }
       throw new AppError(
         "SPOTIFY_RATE_LIMITED",
-        retryAfterMs
-          ? `Spotify 请求过于频繁，请约 ${Math.ceil(retryAfterMs / 60000)} 分钟后重试`
-          : "Spotify 请求过于频繁，请稍后重试",
+        operationName === "userTopContent" && retryAfterMs
+          ? `Spotify 暂时拒绝读取个人常听数据，请约 ${Math.ceil(retryAfterMs / 60000)} 分钟后重试`
+          : retryAfterMs
+            ? `Spotify 请求过于频繁，请约 ${Math.ceil(retryAfterMs / 60000)} 分钟后重试`
+            : "Spotify 请求过于频繁，请稍后重试",
         429,
-        { retryAfterMs },
+        { retryAfterMs, upstreamMessage },
       );
     }
     if (!resp.ok) {
+      let upstreamMessage: string | undefined;
+      try {
+        const text = await resp.clone().text();
+        if (text.length > 0 && text.length < 500) upstreamMessage = text;
+      } catch {
+        // ignore diagnostic body failures
+      }
       throw new AppError(
         "SPOTIFY_PATHFINDER_ERROR",
         `Spotify Web Player API 返回 ${resp.status}`,
         502,
+        { status: resp.status, upstreamMessage },
       );
     }
     const body = (await resp.json()) as PathfinderEnvelope<T>;
@@ -656,6 +692,12 @@ function normalizeTrack(
 }
 
 export type SpotifyTimeRange = "short_term" | "medium_term" | "long_term";
+
+const PATHFINDER_TIME_RANGES: Record<SpotifyTimeRange, string> = {
+  short_term: "SHORT_TERM",
+  medium_term: "MID_TERM",
+  long_term: "LONG_TERM",
+};
 
 export interface SpotifyPage<T> {
   items: T[];
@@ -854,14 +896,14 @@ async function topTracksViaPathfinder(
         offset: 0,
         limit: 10,
         sortBy: "AFFINITY",
-        timeRange: timeRange.toUpperCase(),
+        timeRange: PATHFINDER_TIME_RANGES[timeRange],
       },
       includeTopTracks: true,
       topTracksInput: {
         offset,
         limit,
         sortBy: "AFFINITY",
-        timeRange: timeRange.toUpperCase(),
+        timeRange: PATHFINDER_TIME_RANGES[timeRange],
       },
     },
     PATHFINDER_HASHES.userTopContent,
@@ -874,6 +916,27 @@ async function topTracksViaPathfinder(
     typeof topTracks?.totalCount === "number" ? topTracks.totalCount : offset,
     (item) => normalizePathfinderTrack(asRecord(item)?.data),
   );
+}
+
+async function topTracksWithFallback(
+  timeRange: SpotifyTimeRange,
+  limit: number,
+  offset: number,
+): Promise<SpotifyPage<SpotifyTrackEntry>> {
+  try {
+    return await topTracksViaPathfinder(timeRange, limit, offset);
+  } catch (error) {
+    // Pathfinder 查询结构变化时，半年常听仍可由官方数据接口提供。
+    if (
+      timeRange === "medium_term" &&
+      error instanceof AppError &&
+      error.code === "SPOTIFY_PATHFINDER_ERROR" &&
+      (error.details as { status?: unknown } | undefined)?.status === 400
+    ) {
+      return topTracksViaApi(timeRange, limit, offset);
+    }
+    throw error;
+  }
 }
 
 async function userPlaylistsViaPathfinder(
@@ -921,7 +984,7 @@ async function userPlaylistsViaPathfinder(
       return {
         id,
         name: typeof data.name === "string" ? data.name : "",
-        tracksTotal: typeof count === "number" ? count : 0,
+        tracksTotal: typeof count === "number" ? count : null,
         coverUrl: firstSource({ sources: image?.sources }),
       };
     },
@@ -954,23 +1017,48 @@ async function playlistTracksViaPathfinder(
   );
 }
 
+async function playlistTracksWithFallback(
+  playlistId: string,
+  limit: number,
+  offset: number,
+): Promise<SpotifyPage<SpotifyTrackEntry>> {
+  try {
+    return await playlistTracksViaPathfinder(playlistId, limit, offset);
+  } catch (error) {
+    // 个别公开榜单会从 Pathfinder 内容目录暂时消失，标准接口仍可能可读。
+    if (
+      error instanceof AppError &&
+      ["SPOTIFY_PATHFINDER_ERROR", "SPOTIFY_RESPONSE_INVALID"].includes(
+        error.code,
+      )
+    ) {
+      return playlistTracksViaApi(playlistId, limit, offset);
+    }
+    throw error;
+  }
+}
+
 export async function topTracks(
   timeRange: SpotifyTimeRange,
   limit: number,
   offset = 0,
 ): Promise<SpotifyPage<SpotifyTrackEntry>> {
-  return USE_PATHFINDER
-    ? topTracksViaPathfinder(timeRange, limit, offset)
-    : topTracksViaApi(timeRange, limit, offset);
+  return cachedSpotifyContent(`top:${timeRange}:${limit}:${offset}`, () =>
+    USE_PATHFINDER
+      ? topTracksWithFallback(timeRange, limit, offset)
+      : topTracksViaApi(timeRange, limit, offset),
+  );
 }
 
 export async function userPlaylists(
   limit: number,
   offset = 0,
 ): Promise<SpotifyPage<SpotifyPlaylistSummary>> {
-  return USE_PATHFINDER
-    ? userPlaylistsViaPathfinder(limit, offset)
-    : userPlaylistsViaApi(limit, offset);
+  return cachedSpotifyContent(`playlists:${limit}:${offset}`, () =>
+    USE_PATHFINDER
+      ? userPlaylistsViaPathfinder(limit, offset)
+      : userPlaylistsViaApi(limit, offset),
+  );
 }
 
 export async function playlistTracks(
@@ -978,9 +1066,61 @@ export async function playlistTracks(
   limit: number,
   offset = 0,
 ): Promise<SpotifyPage<SpotifyTrackEntry>> {
+  // 歌单详情需要严格按分页游标读取；不复用跨请求缓存，避免播放任务拿到旧页。
   return USE_PATHFINDER
-    ? playlistTracksViaPathfinder(playlistId, limit, offset)
+    ? playlistTracksWithFallback(playlistId, limit, offset)
     : playlistTracksViaApi(playlistId, limit, offset);
+}
+
+// 热门榜固定读取前 50 首；预览、详情及整榜播放共用这一页和同一在途请求。
+// 普通个人歌单继续实时分页，避免修改歌单后一直看到旧内容。
+export async function chartPlaylistTracks(
+  playlistId: string,
+): Promise<SpotifyPage<SpotifyTrackEntry>> {
+  return cachedSpotifyContent(`chart-playlist:${playlistId}`, () =>
+    playlistTracks(playlistId, 50, 0),
+  );
+}
+
+async function cachedSpotifyContent<T>(
+  key: string,
+  loader: () => Promise<T>,
+): Promise<T> {
+  const revision = sessionRevision;
+  const cached = contentCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) {
+    const value = await (cached.promise as Promise<T>);
+    requireCurrentSession(revision);
+    return value;
+  }
+
+  const promise = loader().catch((error) => {
+    const entry = contentCache.get(key);
+    if (entry?.promise !== promise) throw error;
+    if (error instanceof AppError && error.code === "SPOTIFY_RATE_LIMITED") {
+      const details =
+        entry && typeof error.details === "object" && error.details
+          ? (error.details as { retryAfterMs?: unknown })
+          : {};
+      const retryAfterMs =
+        typeof details.retryAfterMs === "number" &&
+        Number.isFinite(details.retryAfterMs)
+          ? details.retryAfterMs
+          : 60_000;
+      // 限流错误只缓存到重试窗口，避免重复点击继续放大上游压力。
+      entry.expiresAt = Date.now() + Math.max(10_000, retryAfterMs);
+    } else {
+      contentCache.delete(key);
+    }
+    throw error;
+  });
+  contentCache.set(key, {
+    expiresAt: Date.now() + CONTENT_CACHE_TTL_MS,
+    promise,
+  });
+  const value = await promise;
+  requireCurrentSession(revision);
+  return value;
 }
 
 // 后续页面按需读取，第一首匹配后即可开播，大歌单也不会被截成前 100 首。

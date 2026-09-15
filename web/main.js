@@ -327,7 +327,7 @@ window.addEventListener("hashchange", applyRoute);
 // ===== 根组件 =====
 // 桌面：左侧固定 sidebar（品牌 / 导航 / mini 播放状态 / 用户）+ 右侧内容区。
 // 窄屏（<860px）：sidebar 隐藏，回退为顶栏 + 底部导航（CSS 媒体查询切换）。
-const SIDEBAR_ITEMS = ["player", "search", "queue", "playlists", "library", "charts", "spotify", "stats", "settings"];
+const SIDEBAR_ITEMS = ["player", "search", "queue", "playlists", "library", "charts", "stats", "settings"];
 // 移动底栏 6 tab：「播放」放首位，其图标即迷你播放指示器（封面 + 进度环 +
 // 状态徽章）——对齐 Flutter app _PlayTabIcon 的方案：mini player 不做横条，
 // 入口就是 tab 本身。队列窄屏入口在播放页进度行末的队列键。

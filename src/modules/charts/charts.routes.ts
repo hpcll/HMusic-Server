@@ -10,7 +10,13 @@ import {
   replaceQueue,
 } from "../queue/queue.service.js";
 import { searchTracks } from "../search/search.service.js";
-import { getChart, listCharts } from "./charts.service.js";
+import { playSpotifyEntries } from "../spotify/spotify.service.js";
+import {
+  getAvailableChart,
+  listAvailableCharts,
+  spotifyChart,
+  spotifyChartTracks,
+} from "./chart-catalog.service.js";
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -26,13 +32,18 @@ const playChartSchema = z
 export async function chartsRoutes(app: FastifyInstance): Promise<void> {
   requireAuth(app);
 
-  app.get("/", async () => {
-    return { charts: listCharts() };
+  app.get("/", async (request) => {
+    const query = z
+      .object({ includeSpotify: z.enum(["true", "false"]).optional() })
+      .parse(request.query);
+    return {
+      charts: await listAvailableCharts(query.includeSpotify !== "false"),
+    };
   });
 
   app.get("/:id", async (request) => {
     const params = paramsSchema.parse(request.params);
-    return getChart(params.id);
+    return getAvailableChart(params.id);
   });
 
   // 整榜播放：条目带 track 的榜（家庭/网易云/QQ）整个灌进队列开播；
@@ -44,7 +55,12 @@ export async function chartsRoutes(app: FastifyInstance): Promise<void> {
     const params = paramsSchema.parse(request.params);
     const body = playChartSchema.parse(request.body ?? {});
 
-    const chart = await getChart(params.id);
+    const spotify = spotifyChart(params.id);
+    if (spotify) {
+      chartBackfillSeq += 1;
+      return playSpotifyEntries(await spotifyChartTracks(spotify), body);
+    }
+    const chart = await getAvailableChart(params.id);
     // 任一整榜播放开始都作废上一次的后台补队列任务（队列已被替换）。
     const seq = ++chartBackfillSeq;
     const tracks = chart.entries

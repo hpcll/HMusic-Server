@@ -1030,83 +1030,64 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .chart-count { color: var(--accent); }
 .chart-list { counter-reset: none; }
 
-/* 卡片墙：按来源分组的榜单入口，卡片直接亮前 3 首 */
-.chart-group-label { font-size: 13px; color: var(--muted); margin: 0 2px 10px; }
-.chart-wall {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 12px;
-}
-.chart-card {
-  gap: 8px;
-  padding: 14px 16px;
-  min-height: 152px;
-  align-content: start;
-  cursor: pointer;
-  transition: border-color 0.12s ease;
-}
+/* 常听与发现分层，默认精选去重；卡片预览和详情共享内容。 */
+.charts-view { max-width: 1320px; width: 100%; margin: 0 auto; container-type: inline-size; }
+.charts-page-head, .charts-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.charts-page-head .view-title { margin: 0; }
+.charts-page-subtitle { margin: 6px 0 0; color: var(--muted-2); font-size: 13px; }
+.charts-personal, .charts-discovery { display: grid; gap: 18px; min-width: 0; }
+.charts-personal { padding-bottom: 26px; border-bottom: 1px solid var(--line-soft); }
+.charts-section-head h3 { margin: 0; font: 600 20px/1.4 var(--font-serif); color: var(--text-strong); }
+.charts-section-head p { margin: 5px 0 0; font-size: 12px; color: var(--muted-2); }
+.charts-section-mark { color: var(--muted-2); }
+.charts-section-mark svg { width: 24px; height: 24px; }
+.charts-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.charts-filter { min-height: 38px; padding: 7px 16px; border: 1px solid transparent; border-radius: 99px; color: var(--muted-2); background: var(--panel-2); font-size: 13px; cursor: pointer; }
+.charts-filter:hover { color: var(--text-strong); border-color: var(--line); }
+.charts-filter.active { color: var(--bg); background: var(--text-strong); }
+.chart-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.chart-wall-personal { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.chart-card { gap: 18px; padding: 20px; min-width: 0; align-content: start; cursor: pointer; transition: border-color .12s ease; }
 .chart-card:hover { border-color: var(--muted); }
-.chart-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.chart-card-cover {
-  width: 44px;
-  height: 44px;
-  flex: none;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line-soft);
-  background: var(--panel-2) center/cover no-repeat;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  font-size: 15px;
+.chart-card-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.chart-card-cover { width: 48px; height: 48px; flex: none; border-radius: var(--radius-sm); overflow: hidden; background: var(--panel-2); display: grid; place-items: center; color: var(--muted-2); }
+.chart-card-cover img { width: 100%; height: 100%; object-fit: cover; }
+.chart-card-cover svg { width: 22px; height: 22px; }
+.chart-card-open { display: grid; gap: 4px; flex: 1; min-width: 0; min-height: 48px; padding: 0; text-align: left; background: none; border: 0; cursor: pointer; }
+.chart-card-caption { font-size: 11px; color: var(--muted-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-card-name { font: 700 18px/1.35 var(--font-serif); color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-card-preview { min-height: 156px; }
+.chart-card-songs { display: grid; list-style: none; padding: 0; margin: 0; }
+.chart-card-songs li + li { border-top: 1px solid var(--line-soft); }
+.chart-card-song { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 0; text-align: left; background: none; border: 0; cursor: pointer; }
+.cc-rank { width: 22px; flex: none; font: 500 14px/1.4 var(--font-serif); font-variant-numeric: tabular-nums; color: var(--muted); }
+.cc-info { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.cc-title, .cc-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-title { font-size: 13px; color: var(--text-strong); }
+.cc-artist { font-size: 11px; color: var(--muted-2); }
+.cc-play { flex: none; color: var(--muted-2); opacity: 0; }
+.cc-play svg { width: 14px; height: 14px; }
+.chart-card-song:hover .cc-play, .chart-card-song:focus-visible .cc-play { opacity: 1; }
+.chart-card-song:disabled { opacity: .5; cursor: default; }
+.chart-card-feedback, .chart-card-empty { color: var(--muted-2); font-size: 12px; line-height: 1.6; margin: 8px 0; }
+.chart-card-feedback p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 0 0 8px; }
+.chart-card-feedback .ghost-btn { min-height: 40px; padding: 6px 12px; background: var(--panel-2); }
+.chart-card-skeleton { display: grid; gap: 34px; padding: 20px 0; }
+.chart-skeleton-line { height: 16px; background: var(--panel-2); border-radius: 4px; width: 90%; }
+.chart-skeleton-line:nth-child(2) { width: 75%; }
+.chart-skeleton-line:nth-child(3) { width: 62%; }
+@media (max-width: 680px) {
+  .charts-view { gap: 26px; }
+  .charts-section-head h3 { font-size: 18px; }
+  .chart-wall-personal { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
+  .chart-wall-personal .chart-card { flex: 0 0 min(85%, 310px); scroll-snap-align: start; }
+  .chart-card { padding: 16px; }
+  .charts-filter { min-height: 44px; padding-inline: 14px; }
+  .cc-play { opacity: .6; }
 }
-.chart-card-name {
-  font-family: var(--font-serif);
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text-strong);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.chart-card-desc { font-size: 12px; color: var(--muted); }
-.chart-card-songs { display: grid; gap: 6px; }
-.chart-card-song {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  font-size: 13px;
-  min-width: 0;
-}
-.chart-card-song .cc-rank {
-  flex: none;
-  width: 13px;
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.chart-card-song .cc-title {
-  flex: 0 1 auto;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.chart-card-song .cc-artist {
-  flex: 1 1 30%;
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.chart-card-song:hover .cc-title {
-  color: var(--text-strong);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.chart-card-more { font-size: 12px; color: var(--muted); text-align: right; }
-@media (max-width: 859px) {
-  .chart-wall { grid-template-columns: 1fr; gap: 10px; }
+@container (max-width: 680px) {
+  .chart-wall-personal { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
+  .chart-wall-personal .chart-card { flex: 0 0 min(85%, 310px); scroll-snap-align: start; }
 }
 
 /* ============ 歌单页 ============ */
@@ -1132,6 +1113,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   display: grid; place-items: center;
 }
 .pl-icon svg { width: 20px; height: 20px; }
+.pl-icon img { width: 100%; height: 100%; object-fit: cover; }
 .pl-meta { min-width: 0; }
 .pl-name {
   font-weight: 500; font-size: 14.5px; color: var(--text-strong);
@@ -1139,6 +1121,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 }
 .pl-actions { display: flex; gap: 6px; }
 .detail-head { display: flex; align-items: center; justify-content: space-between; }
+.playlist-section { display: grid; gap: 10px; margin-top: 20px; }
+.spotify-playlist-section { margin-bottom: 8px; }
 
 /* ============ Spotify ============ */
 .spotify-view .view-head { margin-bottom: 0; gap: var(--sp-3); }
@@ -1168,6 +1152,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .spotify-account-info { min-width: 0; }
 .spotify-account-info .card-title { margin: 0; font-size: var(--fs-lg); }
 .spotify-account-info p { margin: var(--sp-1) 0 0; }
+.spotify-links .card-title, .spotify-links p { margin: 0; }
 .spotify-status {
   display: inline-flex; align-items: center;
   color: var(--muted-2); font-size: var(--fs-sm); white-space: nowrap;
