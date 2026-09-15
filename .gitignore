@@ -12,4 +12,5 @@ hmusic-deploy.tar.gz.sha256
 # 内部开发文档默认不公开；部署指南是公开发布入口。
 docs/*
 !docs/DEPLOYMENT.md
+!docs/songloft-plugin-migration-plan.md
 web/vendor/README.md

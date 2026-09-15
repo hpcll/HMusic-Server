@@ -4,6 +4,7 @@ import type {
   HMusicTrack,
 } from "../../shared/contracts.js";
 import { AppError } from "../../shared/errors.js";
+import type { LxMediaResult } from "../sources/lx-plugin.runtime.js";
 import {
   getRuntimeConfig,
   type RuntimeConfig,
@@ -110,29 +111,66 @@ const VERIFY_STREAM = !process.env.VITEST;
 
 // 实测直链可播性：Range 取 1 字节，CDN 回 200/206 即可播（403/404 是版权拒绝）。
 // QQ 的 vkey 直链可重复请求，探测后照常播放不受影响。探测本身异常时从宽放行。
-async function isPlayableUrl(url: string): Promise<boolean> {
+async function isPlayableUrl(
+  media: LxMediaResult,
+  strict = false,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<boolean> {
   try {
-    const response = await fetch(url, {
-      headers: { Range: "bytes=0-1" },
-      signal: AbortSignal.timeout(6000),
+    const response = await fetch(media.url, {
+      headers: { ...media.headers, Range: "bytes=0-1" },
+      signal: AbortSignal.timeout(Math.max(1, Math.min(6000, deadline - Date.now()))),
     });
-    if (response.status >= 400) return false;
     response.body?.cancel().catch(() => {});
-    return true;
+    return strict
+      ? response.status === 200 || response.status === 206
+      : response.status < 400;
   } catch {
-    return true; // 探测失败不代表链接坏，交给播放器兜底
+    return !strict; // 普通播放保留原策略；严格模式不得把未知/死链当成功。
   }
+}
+
+async function withinResolveBudget<T>(promise: Promise<T>, deadline: number): Promise<T> {
+  if (!Number.isFinite(deadline)) return promise;
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new AppError("TRACK_RESOLVE_TIMEOUT", "解析超时", 504)),
+      Math.max(1, deadline - Date.now()));
+    timer.unref?.();
+  });
+  try { return await Promise.race([promise, timeout]); }
+  finally { clearTimeout(timer!); }
 }
 
 export async function resolveTrack(input: {
   track: HMusicTrack;
   quality?: string;
+  refresh?: boolean;
+  strict?: boolean;
+  timeoutMs?: number;
 }): Promise<HMusicResolvedTrack> {
+  const deadline = input.timeoutMs ? Date.now() + input.timeoutMs : Number.POSITIVE_INFINITY;
+  const strict = input.strict === true;
+  // 手工/本地直链没有可重新查询的来源 ID，其余来源刷新时必须丢弃缓存链接。
+  if (input.refresh && !["manual", "local"].includes(input.track.source)) {
+    const freshTrack = { ...input.track };
+    delete freshTrack.url;
+    const raw = freshTrack.raw;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const freshRaw = { ...raw } as Record<string, unknown>;
+      for (const key of ["url", "playUrl", "play_url", "src"]) delete freshRaw[key];
+      freshTrack.raw = freshRaw;
+    }
+    input = { ...input, track: freshTrack };
+  }
   // 直链曲目（手动添加 / 测试音）自带 url，不走插件档位系统，
   // "source" 是它们的合法标签，原样保留即可。
   if (input.track.url) {
     const quality = input.quality || input.track.qualities?.[0] || "source";
-    return { track: input.track, url: input.track.url, quality };
+    if (strict && !(await isPlayableUrl({ url: input.track.url }, true, deadline))) {
+      throw new AppError("TRACK_URL_UNPLAYABLE", "媒体链接不可访问", 502);
+    }
+    return { track: input.track, url: input.track.url, quality, ...(strict ? { verified: true } : {}) };
   }
 
   const config = await getRuntimeConfig();
@@ -152,18 +190,21 @@ export async function resolveTrack(input: {
     config.resolveStrategy,
     input.track.source,
   )) {
+    if (Date.now() >= deadline) break;
     const candidateTrack =
       attempt === "original"
         ? input.track
-        : await findTrackOnPlatform(attempt, input.track);
+        : await withinResolveBudget(findTrackOnPlatform(attempt, input.track), deadline);
     if (!candidateTrack) continue;
 
-    const resolved = await resolveTiers(candidateTrack, tiers);
+    const resolved = await resolveTiers(candidateTrack, tiers, strict, deadline);
     if (resolved) {
       // 保留原曲身份（队列同步/播放历史都按原曲记账），只换播放直链。
       return {
         track: { ...input.track, url: resolved.url },
         url: resolved.url,
+        ...(resolved.headers ? { headers: resolved.headers } : {}),
+        ...(strict ? { verified: true } : {}),
         quality: resolved.quality,
       };
     }
@@ -185,26 +226,29 @@ export async function resolveTrack(input: {
 async function resolveTiers(
   track: HMusicTrack,
   tiers: string[],
-): Promise<{ url: string; quality: string } | undefined> {
-  let firstUrl: string | undefined;
+  strict = false,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<(LxMediaResult & { quality: string }) | undefined> {
+  let firstMedia: LxMediaResult | undefined;
   let firstQuality = tiers[0];
   for (const quality of tiers) {
-    let candidate: string | undefined;
+    if (Date.now() >= deadline) break;
+    let candidate: LxMediaResult | undefined;
     try {
-      candidate = await resolveSourceTrack(track, quality);
+      candidate = await withinResolveBudget(resolveSourceTrack(track, quality), deadline);
     } catch {
       continue;
     }
     if (!candidate) continue;
-    if (!firstUrl) {
-      firstUrl = candidate;
+    if (!firstMedia) {
+      firstMedia = candidate;
       firstQuality = quality;
     }
-    if (!VERIFY_STREAM || (await isPlayableUrl(candidate))) {
-      return { url: candidate, quality };
+    if ((!VERIFY_STREAM && !strict) || (await isPlayableUrl(candidate, strict, deadline))) {
+      return { ...candidate, quality };
     }
   }
-  return firstUrl ? { url: firstUrl, quality: firstQuality } : undefined;
+  return !strict && firstMedia ? { ...firstMedia, quality: firstQuality } : undefined;
 }
 
 // 搜索策略 → 原生平台交错顺序（领先平台的结果排最前）。

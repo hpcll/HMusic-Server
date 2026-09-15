@@ -13,6 +13,7 @@ import {
   assertLxPluginLoadable,
   createLxPluginRuntime,
   type LxLyricResult,
+  type LxMediaResult,
   type LxPluginConfig,
 } from "./lx-plugin.runtime.js";
 
@@ -320,8 +321,8 @@ export async function searchSourceTracks(
 export async function resolveSourceTrack(
   track: HMusicTrack,
   quality?: string,
-): Promise<string | undefined> {
-  if (track.url) return track.url;
+): Promise<LxMediaResult | undefined> {
+  if (track.url) return { url: track.url };
   if (track.source === manualSource.id) return undefined;
 
   const plugins = await getResolveCandidatePlugins(track.source);

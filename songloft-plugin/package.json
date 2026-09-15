@@ -1,0 +1,22 @@
+{
+  "name": "hmusic-bridge",
+  "version": "0.2.0",
+  "description": "HMusic Bridge — Songloft 搜索、播放、歌词与 MIoT 音源桥接插件",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "songloft-plugin build",
+    "dev": "songloft-plugin dev",
+    "validate": "cd \"dist/_build\" && songloft-plugin validate",
+    "typecheck": "tsc --noEmit",
+    "build:test": "esbuild src/main.ts --bundle --format=iife --target=es2020 --outfile=build/main.js --log-level=warning",
+    "test": "npm run build:test && node --test test/regression.mjs test/mvp.mjs && node test/smoke.mjs --offline",
+    "smoke": "npm run build:test && node test/smoke.mjs"
+  },
+  "devDependencies": {
+    "@songloft/client-sdk": "2.15.0",
+    "@songloft/plugin-builder": "2.15.0",
+    "@songloft/plugin-sdk": "2.15.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -12,9 +12,11 @@ export type LxPluginConfig = {
 
 type RuntimeResult = {
   search(query: string, page: number): Promise<HMusicTrack[]>;
-  resolve(track: HMusicTrack, quality?: string): Promise<string | undefined>;
+  resolve(track: HMusicTrack, quality?: string): Promise<LxMediaResult | undefined>;
   lyric(track: HMusicTrack): Promise<LxLyricResult | undefined>;
 };
+
+export type LxMediaResult = { url: string; headers?: Record<string, string> };
 
 type LxRequest = {
   source: string;
@@ -125,7 +127,7 @@ export async function createLxPluginRuntime(
         `getPlayUrl && getPlayUrl(${payload}, ${JSON.stringify(quality || "")})`,
       ]);
 
-      const directUrl = extractUrl(result);
+      const directUrl = extractMedia(result);
       if (directUrl) return directUrl;
 
       const eventResult = await callLxRequestHandlers(
@@ -140,7 +142,7 @@ export async function createLxPluginRuntime(
           },
         },
       );
-      return extractUrl(eventResult);
+      return extractMedia(eventResult);
     },
     lyric: async (track) => {
       const payload = createTrackPayload(track);
@@ -439,6 +441,25 @@ function extractUrl(raw: unknown): string | undefined {
   }
   if (row.data) return extractUrl(row.data);
   return undefined;
+}
+
+// 解析凭据只随媒体响应传递，不写入搜索结果或歌曲身份。
+function extractMedia(raw: unknown): LxMediaResult | undefined {
+  const url = extractUrl(raw);
+  if (!url) return undefined;
+  if (!raw || typeof raw !== "object") return { url };
+  const row = raw as Record<string, unknown>;
+  const nested = row.data && typeof row.data === "object"
+    ? extractMedia(row.data)
+    : undefined;
+  const headers = normalizeHeaders(row.headers ?? nested?.headers);
+  for (const key of Object.keys(headers)) {
+    if (!/^[!#$%&'*+.^_`|~\w-]+$/.test(key) || /[\r\n]/.test(headers[key])
+      || /^(host|connection|content-length|transfer-encoding|range)$/i.test(key)) {
+      delete headers[key];
+    }
+  }
+  return { url, ...(Object.keys(headers).length ? { headers } : {}) };
 }
 
 function createTrackPayload(track: HMusicTrack): string {

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/songloft-org/plugin-toolchain/main/schemas/plugin.schema.json",
+  "name": "HMusic Bridge",
+  "version": "0.2.0",
+  "description": "桥接 HMusic-Server 聚合搜索与解析，为 Songloft 提供搜索、入库、播放三条链路",
+  "author": "HMusic",
+  "homepage": "",
+  "license": "Apache-2.0",
+  "entryPath": "hmusic-bridge",
+  "main": "main.js",
+  "minHostVersion": "2.12.0",
+  "permissions": ["storage", "songs.read", "songs.write", "inter-plugin"],
+  "updateUrl": "",
+  "download_url": "",
+  "entryHash": "",
+  "zipHash": ""
+}

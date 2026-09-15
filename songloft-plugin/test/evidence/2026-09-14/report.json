@@ -1,0 +1,199 @@
+{
+  "checkedAt": "2026-09-14T16:16:12.713202+00:00",
+  "environment": {
+    "songloft": "2.12.0",
+    "sdk": "2.15.0",
+    "miot": "2026.9.11",
+    "host": "127.0.0.1:58192",
+    "hmusic": "127.0.0.1:58193",
+    "mediaFixture": "127.0.0.1:58194"
+  },
+  "artifact": {
+    "path": "../../../dist/hmusic-bridge.jsplugin.zip",
+    "version": "0.2.0",
+    "minHostVersion": "2.12.0",
+    "entryHash": "8d0218c2831819b12fe9cab6ecff7b904bb11e633ba5ea1305c59f48240d9dfe",
+    "zipHash": "d8a646128a3b4d956ce86031875414988092c657ceb0a5f55bbd8f9eb60b07ba",
+    "sha256": "31fab9960c39022fc468d490ef4ba6665bfe40ee7754b69d4318ef64959cb0b1",
+    "bytes": 22070,
+    "crcValid": true,
+    "matchesBuildDirectory": true,
+    "credentialsAbsent": true
+  },
+  "checks": {
+    "serverTests": {
+      "files": 23,
+      "passed": 151,
+      "strictResolveAfterLintFix": 5
+    },
+    "pluginTests": {
+      "regression": 51,
+      "offlineSmoke": 7
+    },
+    "serverTypecheck": true,
+    "pluginTypecheck": true,
+    "serverBuild": true,
+    "pluginBuild": true,
+    "manifestValidation": true,
+    "changedServerFilesLint": true,
+    "diffWhitespaceCheck": true
+  },
+  "host": [
+    {
+      "name": "安装 0.1.0 并保存连接",
+      "passed": true,
+      "durationMs": 38
+    },
+    {
+      "name": "升级到 0.2.0 后配置和鉴权保持",
+      "passed": true,
+      "durationMs": 17
+    },
+    {
+      "name": "真实宿主搜索和重复入库去重",
+      "passed": true,
+      "durationMs": 11
+    },
+    {
+      "name": "原始 source_data 的旧链接被刷新，媒体 headers 返回宿主",
+      "passed": true,
+      "durationMs": 15
+    },
+    {
+      "name": "宿主播放接口完成解析、带 headers 拉取媒体并返回 WAV 音频",
+      "passed": true,
+      "durationMs": 3
+    },
+    {
+      "name": "旧 URL 失效后重新解析得到新链接",
+      "passed": true,
+      "durationMs": 14
+    },
+    {
+      "name": "完整 track 歌词接口",
+      "passed": true,
+      "durationMs": 3
+    },
+    {
+      "name": "保留数据卸载并重装后配置恢复",
+      "passed": true,
+      "durationMs": 18
+    },
+    {
+      "name": "禁用再启用后配置恢复",
+      "passed": true,
+      "durationMs": 30
+    }
+  ],
+  "hostAfterExpiredUrl": {
+    "checkedAt": "2026-09-14T15:39:41.073Z",
+    "before": {
+      "status": 206,
+      "mime": "audio/x-wav",
+      "length": 44,
+      "prefix": "RIFF"
+    },
+    "after": {
+      "status": 206,
+      "mime": "audio/x-wav",
+      "length": 44,
+      "prefix": "RIFF"
+    }
+  },
+  "web": {
+    "hostHint": "宿主就绪：2.12.0（支持播放）",
+    "state": {
+      "is_playing": true,
+      "current_time": 1.001,
+      "songId": 3
+    },
+    "mediaResponses": [
+      {
+        "status": 206,
+        "path": "/api/v1/songs/3/play"
+      },
+      {
+        "status": 204,
+        "path": "/api/v1/songs/3/played"
+      },
+      {
+        "status": 503,
+        "path": "/api/v1/songs/3/play"
+      },
+      {
+        "status": 503,
+        "path": "/api/v1/songs/3/play"
+      },
+      {
+        "status": 503,
+        "path": "/api/v1/songs/3/play"
+      },
+      {
+        "status": 206,
+        "path": "/api/v1/songs/3/play"
+      },
+      {
+        "status": 204,
+        "path": "/api/v1/songs/3/played"
+      }
+    ],
+    "retry": {
+      "failureStatus": 503,
+      "requestedMediaAgain": true,
+      "repeatedImport": false
+    },
+    "meta": "已重新发起播放。"
+  },
+  "miot": {
+    "checkedAt": "2026-09-14T15:15:06.540Z",
+    "registration": {
+      "registered": true,
+      "message": "已注册，请在 MIoT 设置中启用 HMusic 搜索源。"
+    },
+    "providers": {
+      "providers": [
+        {
+          "id": "hmusic-bridge",
+          "name": "HMusic",
+          "url": "/api/v1/jsplugin/hmusic-bridge/api/search/topone",
+          "installed": true,
+          "active": true
+        }
+      ]
+    },
+    "candidate": {
+      "title": "晴天",
+      "artist": "周杰伦",
+      "source": "tx",
+      "hasTemporaryUrl": false,
+      "dedupKey": "hmusic:tx:0039MnYb0qxYhV"
+    }
+  },
+  "miotAfterIdle": {
+    "checkedAt": "2026-09-14T15:42:28.829Z",
+    "status": 200,
+    "registration": {
+      "registered": true,
+      "message": "已注册，请在 MIoT 设置中启用 HMusic 搜索源。"
+    }
+  },
+  "lyrics": {
+    "checkedAt": "2026-09-14T15:42:28.834Z",
+    "status": 200,
+    "length": 1468,
+    "hasTimedLyrics": true
+  },
+  "native": {
+    "platform": "macOS",
+    "version": "2.12.0",
+    "login": "observed_authenticated_home",
+    "playback": "awaiting_user_confirmation",
+    "reason": "automated activation/clicks did not navigate the app"
+  },
+  "boundaries": [
+    "Web retry injects HTTP 503 in browser routing; player and host bridge are real.",
+    "Expired media and headers use a local controlled fixture.",
+    "Real Xiaomi speaker output, mobile clients, cross-host deployment and long pauses were not tested.",
+    "P3 remains optional and was not implemented."
+  ]
+}

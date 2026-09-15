@@ -58,6 +58,8 @@ export type HMusicSearchResult = {
 export type HMusicResolvedTrack = {
   track: HMusicTrack;
   url: string;
+  headers?: Record<string, string>;
+  verified?: boolean;
   quality: string;
   expiresAt?: number;
 };

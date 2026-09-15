@@ -16,6 +16,9 @@ const resolveSchema = z
     track: trackSchema.optional(),
     clientTrack: clientTrackSchema.optional(),
     quality: z.string().min(1).optional(),
+    refresh: z.boolean().optional(),
+    strict: z.boolean().optional(),
+    timeoutMs: z.number().int().min(100).max(26000).optional(),
   })
   .strict();
 
@@ -27,6 +30,9 @@ export async function lyricsRoutes(app: FastifyInstance): Promise<void> {
     return resolveTrack({
       track: getInputTrack(body),
       quality: body.quality,
+      refresh: body.refresh,
+      strict: body.strict,
+      timeoutMs: body.timeoutMs,
     });
   });
 

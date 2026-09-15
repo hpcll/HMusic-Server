@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>HMusic Bridge</title>
+  <link rel="stylesheet" href="static/style.css" />
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <h1>HMusic Bridge</h1>
+      <span id="status-chip" class="chip">检测中…</span>
+    </header>
+
+    <section class="card" id="config-section">
+      <h2>HMusic-Server 连接</h2>
+      <form id="config-form" autocomplete="off">
+        <label>服务地址
+          <input id="config-baseurl" type="url" placeholder="http://127.0.0.1:6650" required />
+        </label>
+        <label>JWT Token（同一服务留空沿用，换地址请重填）
+          <input id="config-token" type="password" placeholder="同一服务留空沿用已保存的 Token" />
+        </label>
+        <div class="row">
+          <button type="submit" id="btn-save" class="btn primary">保存连接</button>
+          <button type="button" id="btn-test" class="btn">测试连通</button>
+          <button type="button" id="btn-clear-token" class="btn">清除 Token</button>
+        </div>
+        <p id="config-hint" class="hint"></p>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>聚合搜索</h2>
+      <form id="search-form" autocomplete="off" class="row">
+        <input id="search-keyword" type="search" placeholder="歌名 歌手，如：晴天 周杰伦" required />
+        <select id="search-source" aria-label="搜索来源">
+          <option value="">全部来源</option>
+          <option value="tx">QQ 音乐</option>
+          <option value="kw">酷我音乐</option>
+          <option value="wy">网易云音乐</option>
+          <option value="manual">手工曲目</option>
+        </select>
+        <button type="submit" class="btn primary" id="btn-search">搜索</button>
+      </form>
+      <div id="search-meta" class="hint"></div>
+
+      <div id="results-wrap" class="hidden">
+        <div class="row results-actions">
+          <label class="check-label"><input type="checkbox" id="check-all" checked /> 全选</label>
+          <button id="btn-import-play" class="btn primary">入库并播放</button>
+          <button id="btn-import" class="btn">仅入库</button>
+          <button id="btn-retry-play" class="btn" disabled>重试播放</button>
+        </div>
+        <ul id="results" class="results"></ul>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>MIoT 音箱搜索</h2>
+      <p class="hint">安装并启用 MIoT 后，注册 HMusic，再到 MIoT 设置中启用这个搜索源。</p>
+      <button id="btn-miot-register" class="btn">注册 / 重试注册</button>
+      <p id="miot-hint" class="hint"></p>
+    </section>
+
+    <footer class="hint" id="host-hint"></footer>
+  </main>
+  <script src="static/app.js"></script>
+</body>
+</html>
