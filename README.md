@@ -145,8 +145,9 @@ Spotify 接入采用个人网页会话：登录服务器电脑上的 Spotify 网
 该通道依赖 Spotify 网页 token、client-token 接口及社区维护的 TOTP 密钥，服务端需要能够访问
 Spotify 和 GitHub；Pathfinder 属于网页端私有接口，Spotify 更新网页后可能需要重新适配。
 
-Web 管理页已提供 Spotify 入口：桌面点击侧栏 **Spotify**，手机可从 **歌单 → Spotify**
-或 **设置 → Spotify** 进入，也可直接打开 `http://<server-ip>:6650/app/#/spotify`。
+Web 管理页已提供 Spotify 入口：**设置 → 账号与设备 → Spotify**，或从 **歌单** 页 Spotify
+区块的「Spotify 设置」按钮进入，也可直接打开 `http://<server-ip>:6650/app/#/spotify`。
+侧栏不再单列 Spotify，Spotify 歌单直接出现在「歌单」页。
 点击“登录 Spotify”后，服务端会在服务器电脑上打开独立的官方登录窗口；完成登录后会自动绑定，
 无需手工复制 Cookie。手动 `sp_dc` 导入仍保留在高级选项中。
 
