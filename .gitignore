@@ -13,4 +13,6 @@ hmusic-deploy.tar.gz.sha256
 docs/*
 !docs/DEPLOYMENT.md
 !docs/songloft-plugin-migration-plan.md
+!docs/songloft-client-adaptation-plan.md
+!docs/songloft-hmusic-first-plan.md
 web/vendor/README.md
