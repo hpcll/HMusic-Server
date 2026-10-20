@@ -8,6 +8,12 @@ const accountUserAgent =
   "APP/com.xiaomi.mico APPV/2.4.24 iosPassportSDK/3.5.1 iOS/14.4 miHSTS";
 const minaUserAgent =
   "MiHome/6.0.103 (com.xiaomi.mihome; build:6.0.103.1; iOS 14.4.0) Alamofire/6.0.103 MICO/iOSApp/appStore/6.0.103";
+const xiaoaiAudioInfoTimeoutMs = 8_000;
+const xiaoaiCapabilityCacheTtlMs = 10 * 60_000;
+const xiaoaiCapabilityCache = new Map<
+  string,
+  { found: boolean; aiProtocol3: boolean; expiresAt: number }
+>();
 const identityUserAgent =
   "Android-7.1.1-1.0.0-ONEPLUS A3010-136-ABCDEABCDEABC APP/xiaomi.smarthome APPV/62830";
 const identityWebUserAgent =
@@ -177,11 +183,7 @@ export async function loginXiaomiAccount(input: {
 
   let serviceToken: string;
   try {
-    serviceToken = await exchangeServiceToken(
-      location,
-      nonce,
-      data.ssecurity,
-    );
+    serviceToken = await exchangeServiceToken(location, nonce, data.ssecurity);
   } catch (error) {
     const passToken = asString(data.passToken);
     if (
@@ -416,7 +418,10 @@ export async function waitXiaomiQrLogin(input: {
     throw new AppError("MI_QR_TOKEN_DATA_MISSING", "扫码结果缺少登录字段", 502);
   }
 
-  log.info({ step: "qr.confirmed", userId }, "扫码已确认，开始换取 serviceToken");
+  log.info(
+    { step: "qr.confirmed", userId },
+    "扫码已确认，开始换取 serviceToken",
+  );
 
   // 首选带 clientSign 的标准 STS 交换；失败回退 passToken 通道。
   if (data.ssecurity && nonce) {
@@ -436,7 +441,10 @@ export async function waitXiaomiQrLogin(input: {
       };
     } catch (error) {
       log.warn(
-        { step: "qr.exchange.failed", code: error instanceof AppError ? error.code : undefined },
+        {
+          step: "qr.exchange.failed",
+          code: error instanceof AppError ? error.code : undefined,
+        },
         "扫码 STS 交换失败，尝试 passToken 回退",
       );
     }
@@ -582,7 +590,10 @@ export async function completeXiaomiIdentityChallenge(input: {
         userId: jarUserId,
         deviceId: input.deviceId,
       });
-      log.info({ step: "identity.passToken.ok" }, "已用 passToken 换取 serviceToken");
+      log.info(
+        { step: "identity.passToken.ok" },
+        "已用 passToken 换取 serviceToken",
+      );
       return { session, state: input.state };
     } catch (error) {
       log.warn(
@@ -598,7 +609,10 @@ export async function completeXiaomiIdentityChallenge(input: {
   // 路径 B：重定向链里直接带回了 serviceToken（部分账号会这样）。
   const jarServiceToken = cookieFromState(input.state, "serviceToken");
   if (jarServiceToken && jarUserId) {
-    log.info({ step: "identity.cookie.ok" }, "已从重定向 cookie 获取 serviceToken");
+    log.info(
+      { step: "identity.cookie.ok" },
+      "已从重定向 cookie 获取 serviceToken",
+    );
     return {
       session: {
         serviceToken: jarServiceToken,
@@ -1125,6 +1139,126 @@ export async function fetchXiaomiDevices(
   });
 }
 
+export type XiaomiAudioInfo = {
+  title?: string;
+  artist?: string;
+  album?: string;
+  coverUrl?: string;
+  durationMs?: number;
+};
+
+export async function fetchXiaoaiAudioInfo(input: {
+  session: XiaomiSession;
+  deviceId: string;
+  audioId: string;
+}): Promise<XiaomiAudioInfo | undefined> {
+  const capability = await fetchXiaoaiAudioCapability(input);
+  if (!capability?.found) return undefined;
+
+  const endpoint = capability.aiProtocol3
+    ? "https://api2.mina.mi.com/aivs3/audio/info"
+    : "https://api2.mina.mi.com/music/song_info";
+  const field = capability.aiProtocol3 ? "audioIdList" : "songIdList";
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Cookie: `serviceToken=${input.session.serviceToken}; userId=${input.session.userId}`,
+      "User-Agent": minaUserAgent,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ [field]: JSON.stringify([input.audioId]) }),
+    signal: AbortSignal.timeout(xiaoaiAudioInfoTimeoutMs),
+  });
+
+  if (!response.ok) {
+    throw new AppError("MI_AUDIO_INFO_FAILED", "获取小爱歌曲详情失败", 502, {
+      statusCode: response.status,
+    });
+  }
+
+  const payload = (await response.json()) as {
+    code?: number | string;
+    data?: unknown;
+  };
+  if (
+    payload.code !== undefined &&
+    payload.code !== 0 &&
+    payload.code !== "0"
+  ) {
+    return undefined;
+  }
+
+  const rows = Array.isArray(payload.data) ? payload.data : [];
+  const row =
+    rows.find((value) => {
+      const item = asRecord(value);
+      return [
+        item?.audio_id,
+        item?.audioId,
+        item?.global_id,
+        item?.globalId,
+        item?.songId,
+        item?.songID,
+        item?.id,
+      ].some((value) => asString(value) === input.audioId);
+    }) ??
+    // Xiaomi may canonicalize an alias audioId; this request contains one ID,
+    // so a single returned row is still the requested song's metadata.
+    (rows.length === 1 ? rows[0] : undefined);
+  const item = asRecord(row);
+  if (!item) return undefined;
+
+  const duration = Number(item.duration);
+  return {
+    title: asString(item.title) || asString(item.name),
+    artist: asString(item.artist) || asString(item.artistName),
+    album: asString(item.album) || asString(item.albumName),
+    coverUrl: asHttpUrl(item.cover) || asHttpUrl(item.coverURL),
+    durationMs:
+      Number.isFinite(duration) && duration > 0
+        ? Math.round(duration * 1000)
+        : undefined,
+  };
+}
+
+async function fetchXiaoaiAudioCapability(input: {
+  session: XiaomiSession;
+  deviceId: string;
+}): Promise<{ found: boolean; aiProtocol3: boolean } | undefined> {
+  const cached = xiaoaiCapabilityCache.get(input.deviceId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { found: cached.found, aiProtocol3: cached.aiProtocol3 };
+  }
+
+  const response = await fetch("https://api.mina.mi.com/admin/v2/device_list", {
+    headers: {
+      Cookie: `serviceToken=${input.session.serviceToken}; userId=${input.session.userId}`,
+      "User-Agent": minaUserAgent,
+    },
+    signal: AbortSignal.timeout(xiaoaiAudioInfoTimeoutMs),
+  });
+  if (!response.ok) {
+    throw new AppError("MI_DEVICE_LIST_FAILED", "获取小米设备列表失败", 502, {
+      statusCode: response.status,
+    });
+  }
+
+  const payload = (await response.json()) as { data?: unknown };
+  const rows = Array.isArray(payload.data) ? payload.data : [];
+  const item = rows
+    .map(asRecord)
+    .find((device) => asString(device?.deviceID) === input.deviceId);
+  const found = Boolean(item);
+  const protocol = asRecord(item?.capabilities)?.ai_protocol_3_0;
+  const aiProtocol3 = protocol === true || protocol === 1 || protocol === "1";
+  xiaoaiCapabilityCache.set(input.deviceId, {
+    found,
+    aiProtocol3,
+    expiresAt: Date.now() + xiaoaiCapabilityCacheTtlMs,
+  });
+  return found ? { found, aiProtocol3 } : { found: false, aiProtocol3: false };
+}
+
 export type XiaomiConversationRecord = {
   query: string;
   time: number;
@@ -1600,4 +1734,11 @@ function asString(value: unknown): string | undefined {
   if (typeof value === "string") return value;
   if (typeof value === "number") return String(value);
   return undefined;
+}
+
+function asHttpUrl(value: unknown): string | undefined {
+  const text = asString(value);
+  return text?.startsWith("http://") || text?.startsWith("https://")
+    ? text
+    : undefined;
 }

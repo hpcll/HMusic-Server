@@ -1,28 +1,37 @@
 import { ref } from "vue";
-import { api } from "/app/api.js";
+import { api } from "./api.js";
+import { lyricLookupKey } from "./lyric-utils.js";
 
-// 歌词共享状态：播放页（桌面双栏/窄屏歌词条）和歌词页共用，
-// 同一首歌只拉一次 /tracks/lyrics。
+// 歌词共享状态：播放页（桌面双栏/窄屏歌词条）和歌词页共用；
+// 设备歌曲的标题/歌手补齐后会重新查询一次歌词。
 export const lyric = ref(null); // HMusicLyric | null
 export const lyricLoading = ref(false);
 let lyricForKey = "";
+let lyricRequestSeq = 0;
 
 export async function ensureLyric(track) {
-  if (!track) {
+  const key = lyricLookupKey(track);
+  if (!key) {
+    lyricRequestSeq += 1;
     lyric.value = null;
+    lyricLoading.value = false;
     lyricForKey = "";
     return;
   }
-  const key = `${track.source}:${track.sourceTrackId}`;
   if (key === lyricForKey) return;
   lyricForKey = key;
+  const requestSeq = ++lyricRequestSeq;
   lyric.value = null;
   lyricLoading.value = true;
   try {
-    lyric.value = await api("/tracks/lyrics", { method: "POST", body: { track } });
+    const result = await api("/tracks/lyrics", {
+      method: "POST",
+      body: { track },
+    });
+    if (requestSeq === lyricRequestSeq) lyric.value = result;
   } catch {
-    lyric.value = null; // 无歌词不算错误
+    if (requestSeq === lyricRequestSeq) lyric.value = null; // 无歌词不算错误
   } finally {
-    lyricLoading.value = false;
+    if (requestSeq === lyricRequestSeq) lyricLoading.value = false;
   }
 }

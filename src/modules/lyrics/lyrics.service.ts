@@ -52,8 +52,15 @@ export async function getLyricByTrack(
     };
   }
 
-  // 先问音源插件；取不到词或只拿到「纯音乐」占位词时走 QQ 兜底源。
-  let result = await getSourceTrackLyric(track);
+  // device 曲目没有对应的 LX 音源；插件不存在或不支持歌词时都继续走名称兜底。
+  let result: LxLyricResult | undefined;
+  if (track.source !== "device") {
+    try {
+      result = await getSourceTrackLyric(track);
+    } catch {
+      // 插件缺失或调用失败不应阻止独立歌词源。
+    }
+  }
   let source = track.source;
   if (!hasRealLyric(result)) {
     const fallback = await fetchFallbackLyric(track);

@@ -6,6 +6,7 @@ import {
   localSeek, localPlay, localPause, localPositionMs, localDurationMs, LOCAL_DEVICE_ID,
 } from "/app/main.js";
 import { lyric, lyricLoading, ensureLyric } from "/app/lyric-state.js";
+import { activeLyricIndex, lyricLookupKey, lyricTrackKey } from "/app/lyric-utils.js";
 import { downloadedBadge, refreshDownloadedKeys } from "/app/download.js";
 
 const FAV_PLAYLIST_NAME = "我喜欢的音乐";
@@ -47,7 +48,7 @@ export const PlayerView = {
     // ── 收藏（「我喜欢的音乐」歌单，首次收藏时自动创建） ──
     const favPlaylist = ref(null); // {id, items} | null
     const favBusy = ref(false);
-    const trackKey = (t) => (t ? `${t.source}:${t.sourceTrackId}` : "");
+    const trackKey = lyricTrackKey;
     const favItem = computed(() => {
       const items = favPlaylist.value?.items || [];
       const key = trackKey(track.value);
@@ -108,17 +109,9 @@ export const PlayerView = {
     }
 
     const lyricLines = computed(() => lyric.value?.lines || []);
-    // 当前行 = 最后一个 timeMs <= 播放进度的行
-    const activeLine = computed(() => {
-      const lines = lyricLines.value;
-      const pos = displayPos.value;
-      let active = -1;
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].timeMs <= pos) active = i;
-        else break;
-      }
-      return active;
-    });
+    const activeLine = computed(() =>
+      activeLyricIndex(lyricLines.value, displayPos.value),
+    );
 
     // 染色进度：rAF 每帧直写 DOM（不经 Vue 响应式）——100ms 定时器只有 10fps，
     // 肉眼可见一卡一卡。本机播放每帧读 <audio> 实时进度；音箱播放用
@@ -200,12 +193,13 @@ export const PlayerView = {
     });
 
     function loadLyric() {
+      setDisplayPos(pb.value.positionMs ?? 0);
       ensureLyric(track.value);
     }
 
     // 按曲目身份而非对象引用监听：store.playback 被整体替换（轮询/各类操作
     // 回写）时 track 引用必变，按引用触发会让歌词链路空转一次。
-    watch(() => trackKey(track.value), loadLyric);
+    watch(() => lyricLookupKey(track.value), loadLyric);
 
     const isLocal = () => pb.value.deviceId === LOCAL_DEVICE_ID;
     // 曲目总时长：服务端值优先，本机播放用 <audio>.duration 兜底。

@@ -62,7 +62,12 @@ async function searchQqSongMid(
   track: HMusicTrack,
 ): Promise<string | undefined> {
   const keyword = [track.title, track.artist]
-    .filter(Boolean)
+    .filter(
+      (value) =>
+        Boolean(value) &&
+        !/^未知/.test(value!) &&
+        value!.toLowerCase() !== "unknown",
+    )
     .join(" ")
     .trim();
   if (!keyword) return undefined;

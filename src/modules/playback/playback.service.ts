@@ -14,6 +14,7 @@ import {
   playbackMediaContext,
   ttsMiotAction,
 } from "../mi/mi.hardware.js";
+import { getDeviceAudioInfo } from "../mi/audio-info.service.js";
 import {
   getMiioSession,
   getMiotDid,
@@ -325,8 +326,7 @@ export async function resumePlayback(): Promise<HMusicPlaybackState> {
 
   // 直链过期防护：暂停太久后 resume，旧 URL 大概率已失效（CDN 时效签名）。
   // 有曲目且距上次解析超过 TTL → 原曲重新解析播放，并 seek 回暂停位置。
-  const stale = Date.now() - lastResolvedAt > RESOLVE_TTL_MS;
-  if (playbackState.track && stale) {
+  if (shouldReResolveTrackOnResume(playbackState.track, lastResolvedAt)) {
     const resumeAt = playbackState.positionMs;
     const state = await playTrack({
       track: playbackState.track,
@@ -360,6 +360,16 @@ export async function resumePlayback(): Promise<HMusicPlaybackState> {
   armAutoNextForCurrent();
   persistPlaybackState();
   return playbackState;
+}
+
+export function shouldReResolveTrackOnResume(
+  track: HMusicTrack | undefined,
+  resolvedAt: number,
+  now = Date.now(),
+): boolean {
+  return Boolean(
+    track && track.source !== "device" && now - resolvedAt > RESOLVE_TTL_MS,
+  );
 }
 
 // 切换默认设备后同步播放目标：不切的话 resume/pause 仍指向旧音箱——
@@ -1104,12 +1114,40 @@ async function doRefreshPlaybackStateFromDevice(): Promise<boolean> {
         media: "app_ios",
       },
     );
-    const status = parseDevicePlaybackStatus(response);
+    const status = parseDevicePlaybackStatus(response, playbackState.track);
     if (!status) return true;
 
+    if (
+      status.track?.source === "device" &&
+      status.track.sourceTrackId !== "current"
+    ) {
+      const audioInfo = await getDeviceAudioInfo(
+        target.id,
+        status.track.sourceTrackId,
+      );
+      if (audioInfo) {
+        status.track = {
+          ...status.track,
+          title: audioInfo.title || status.track.title,
+          artist: audioInfo.artist || status.track.artist,
+          album: audioInfo.album || status.track.album,
+          coverUrl: audioInfo.coverUrl || status.track.coverUrl,
+          durationMs: audioInfo.durationMs || status.track.durationMs,
+        };
+      }
+    }
+
+    const trackChanged = Boolean(
+      status.track &&
+      playbackState.track &&
+      status.track.id !== playbackState.track.id,
+    );
     const wasPlaying = playbackState.state === "playing";
     const prevPositionMs = lastDevicePositionMs;
-    if (typeof status.positionMs === "number") {
+    if (trackChanged) {
+      lastDevicePositionMs = status.positionMs ?? 0;
+      cancelAutoNext();
+    } else if (typeof status.positionMs === "number") {
       lastDevicePositionMs = status.positionMs;
     }
 
@@ -1118,8 +1156,13 @@ async function doRefreshPlaybackStateFromDevice(): Promise<boolean> {
       deviceId: target.id,
       deviceName: target.name,
       state: status.state ?? playbackState.state,
-      positionMs: status.positionMs ?? playbackState.positionMs,
-      durationMs: status.durationMs ?? playbackState.durationMs,
+      positionMs:
+        status.positionMs ?? (trackChanged ? 0 : playbackState.positionMs),
+      durationMs:
+        status.durationMs ??
+        (trackChanged
+          ? (status.track?.durationMs ?? 0)
+          : playbackState.durationMs),
       volume: status.volume ?? playbackState.volume,
       playMode: status.playMode ?? playbackState.playMode,
       track: status.track ?? playbackState.track,
@@ -1167,6 +1210,7 @@ async function doRefreshPlaybackStateFromDevice(): Promise<boolean> {
     // nextPlayback 抛错收尾。
     const seq = playInstanceSeq;
     const shouldAdvance =
+      !trackChanged &&
       detectRemoteTrackEnded({
         wasPlaying,
         deviceState: status.state,
@@ -1255,8 +1299,9 @@ async function runWatchdogTick(): Promise<void> {
   }
 }
 
-function parseDevicePlaybackStatus(
+export function parseDevicePlaybackStatus(
   response: unknown,
+  currentTrack = playbackState.track,
 ): Partial<HMusicPlaybackState> | undefined {
   const root = asRecord(response);
   const data = asRecord(root?.data);
@@ -1274,6 +1319,22 @@ function parseDevicePlaybackStatus(
     asString(detail?.audio_id) ||
     asString(detail?.global_id) ||
     asString(detail?.id);
+  const isSameHMusicTrack = Boolean(
+    currentTrack &&
+    currentTrack.source !== "device" &&
+    audioId &&
+    audioId ===
+      createMiAudioId({
+        url: currentTrack.url || "",
+        title: currentTrack.title,
+      }),
+  );
+  const isSameDeviceTrack = Boolean(
+    currentTrack?.source === "device" &&
+    audioId &&
+    audioId === currentTrack.sourceTrackId,
+  );
+  const keepCurrentTrack = isSameHMusicTrack || isSameDeviceTrack;
 
   return {
     state: mapDeviceStatus(asNumber(rawStatus.status)),
@@ -1284,21 +1345,36 @@ function parseDevicePlaybackStatus(
     track:
       detail && (title || audioId)
         ? {
-            id: playbackState.track?.id || audioId || "device:current",
-            source: playbackState.track?.source || "device",
-            sourceTrackId:
-              playbackState.track?.sourceTrackId || audioId || "current",
-            title: title || playbackState.track?.title || "未知歌曲",
-            artist: artist || playbackState.track?.artist || "未知艺术家",
-            album: asString(detail.album) || playbackState.track?.album,
+            id: keepCurrentTrack
+              ? currentTrack!.id
+              : `device:${audioId || "current"}`,
+            source: keepCurrentTrack ? currentTrack!.source : "device",
+            sourceTrackId: keepCurrentTrack
+              ? currentTrack!.sourceTrackId
+              : audioId || "current",
+            title: isSameHMusicTrack
+              ? currentTrack!.title
+              : title || (isSameDeviceTrack ? currentTrack!.title : "未知歌曲"),
+            artist: isSameHMusicTrack
+              ? currentTrack!.artist
+              : artist ||
+                (isSameDeviceTrack ? currentTrack!.artist : "未知艺术家"),
+            album: isSameHMusicTrack
+              ? currentTrack!.album
+              : asString(detail.album) ||
+                (isSameDeviceTrack ? currentTrack!.album : undefined),
             durationMs:
-              asNumber(detail.duration) || playbackState.track?.durationMs,
+              (isSameHMusicTrack ? undefined : asNumber(detail.duration)) ||
+              (keepCurrentTrack ? currentTrack!.durationMs : undefined),
             // 只收合法 http(s)：设备上报的 cover 可能是任意字符串，混进 track 后
             // 收藏（trackSchema 的 coverUrl 是 z.string().url()）会被 400 拒收。
-            coverUrl: asHttpUrl(detail.cover) || playbackState.track?.coverUrl,
-            url: playbackState.track?.url,
-            qualities: playbackState.track?.qualities,
-            raw: detail,
+            coverUrl: isSameHMusicTrack
+              ? currentTrack!.coverUrl
+              : asHttpUrl(detail.cover) ||
+                (isSameDeviceTrack ? currentTrack!.coverUrl : undefined),
+            url: keepCurrentTrack ? currentTrack!.url : undefined,
+            qualities: keepCurrentTrack ? currentTrack!.qualities : undefined,
+            raw: keepCurrentTrack ? currentTrack!.raw : detail,
           }
         : undefined,
   };

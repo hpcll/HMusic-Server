@@ -1,8 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HMusicTrack } from "../../src/shared/contracts.js";
+
+const { sourceLyricMock } = vi.hoisted(() => ({
+  sourceLyricMock: vi.fn(),
+}));
+
+vi.mock("../../src/modules/sources/sources.service.js", () => ({
+  getSourceTrackLyric: sourceLyricMock,
+}));
+
 import {
   hasRealLyric,
   parseLrc,
+  getLyricByTrack,
 } from "../../src/modules/lyrics/lyrics.service.js";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("hasRealLyric", () => {
   it("空结果或空 LRC 不算有词", () => {
@@ -44,5 +60,55 @@ describe("parseLrc", () => {
       { timeMs: 2000, text: "副歌" },
       { timeMs: 10000, text: "副歌" },
     ]);
+  });
+});
+
+describe("getLyricByTrack", () => {
+  it("looks up device lyrics by title and artist without requiring an LX plugin", async () => {
+    const lyricText = "[00:00.00]第一句\n[00:05.00]第二句";
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("client_search_cp")) {
+        return {
+          ok: true,
+          text: async () =>
+            JSON.stringify({
+              data: { song: { list: [{ mid: "ABC123456789012" }] } },
+            }),
+        };
+      }
+      return {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            lyric: Buffer.from(lyricText, "utf8").toString("base64"),
+            trans: "",
+          }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    sourceLyricMock.mockResolvedValue(undefined);
+
+    const track: HMusicTrack = {
+      id: "device:external-audio-1",
+      source: "device",
+      sourceTrackId: "external-audio-1",
+      title: "稻香",
+      artist: "周杰伦",
+    };
+    const result = await getLyricByTrack(track);
+
+    const searchUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(searchUrl.searchParams.get("w")).toBe("稻香 周杰伦");
+    expect(sourceLyricMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      trackId: track.id,
+      source: "qq-fallback",
+      lrc: lyricText,
+      lines: [
+        { timeMs: 0, text: "第一句" },
+        { timeMs: 5_000, text: "第二句" },
+      ],
+    });
   });
 });

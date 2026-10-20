@@ -772,7 +772,8 @@ function isMiUnauthorizedError(error: unknown): boolean {
   if (!(error instanceof AppError)) return false;
   if (
     error.code !== "MI_UBUS_REQUEST_FAILED" &&
-    error.code !== "MI_DEVICE_LIST_FAILED"
+    error.code !== "MI_DEVICE_LIST_FAILED" &&
+    error.code !== "MI_AUDIO_INFO_FAILED"
   ) {
     return false;
   }

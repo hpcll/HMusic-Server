@@ -6,6 +6,7 @@ import {
   localSeek, localPlay, localPause, localPositionMs, LOCAL_DEVICE_ID,
 } from "/app/main.js";
 import { lyric, lyricLoading, ensureLyric } from "/app/lyric-state.js";
+import { activeLyricIndex, lyricLookupKey } from "/app/lyric-utils.js";
 
 // 歌词页（#/lyrics，窄屏专用的沉浸式独立路由）：
 //   头部收起键 + 曲名/歌手 → 全屏歌词滚动（行点跳转）→ 底部迷你播控（进度 + 三键）。
@@ -26,16 +27,9 @@ export const LyricsView = {
     const totalMs = () => pb.value.durationMs || 0;
 
     const lyricLines = computed(() => lyric.value?.lines || []);
-    const activeLine = computed(() => {
-      const lines = lyricLines.value;
-      const pos = displayPos.value;
-      let active = -1;
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].timeMs <= pos) active = i;
-        else break;
-      }
-      return active;
-    });
+    const activeLine = computed(() =>
+      activeLyricIndex(lyricLines.value, displayPos.value),
+    );
 
     watch(activeLine, (index) => {
       if (index < 0 || !lyricListEl.value) return;
@@ -43,7 +37,13 @@ export const LyricsView = {
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     });
 
-    watch(track, (t) => ensureLyric(t));
+    watch(
+      () => lyricLookupKey(track.value),
+      () => {
+        displayPos.value = pb.value.positionMs ?? 0;
+        ensureLyric(track.value);
+      },
+    );
 
     async function sync() {
       await refreshPlayback();
